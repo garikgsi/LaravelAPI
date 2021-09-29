@@ -1,0 +1,33 @@
+<?php
+
+use Illuminate\Database\Seeder;
+
+class BankSeeder extends Seeder
+{
+    /**
+     * Run the database seeds.
+     *
+     * @return void
+     */
+    public function run()
+    {
+        DB::connection('db1')->table('banks')->insert([
+            [
+                'id'=>1,
+                'uuid'=>'',
+                'name'=>'Не выбрано',
+                'comment'=>'Не выбрано',
+                'created_at'=>date("Y-m-d H:i:s"),
+                'created_by'=>1,
+                // 'is_deleted'=>0,
+                'bik'=>'',
+                'ks'=>'',
+                'city'=>'',
+                'address'=>'',
+                'phone'=>null,
+                'is_protected'=>true,
+            ]
+        ]);
+
+    }
+}
