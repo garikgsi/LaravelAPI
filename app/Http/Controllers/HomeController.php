@@ -37,7 +37,15 @@ class HomeController extends Controller
     public function index()
     {
 
+        // $n = Nomenklatura::stock_balance(15);
+
+        // dd($n->get()->toArray());
+
+
+
+
         $user = Auth::user();
+
         // // перенос на другую ФС
         // $disk = new ABPStorage('local');
         // dd($disk);

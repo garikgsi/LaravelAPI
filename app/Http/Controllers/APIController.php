@@ -28,15 +28,16 @@ use App\Nomenklatura;
 
 use App\SkladReceiveItem;
 
+set_time_limit(0);
 
 // ЯЗЫК ЗАПРОСОВ К API
 //
 // GET /api/v1/table_name - вывод 1-й страницы данных (по умолчанию сортируется по столбцу name, 10 строк на странице)
 // GET /api/vi/table_name/N - вывод всех полуй записи таблицы table_name с id=N
-// GET /api/v1/table_name?odata=[full|data|model|list] - формат вывода данных data - только данные, model - только модель столбцов таблицы,
+// GET /api/v1/table_name?odata=[full|data|model|list|count] - формат вывода данных data - только данные, model - только модель столбцов таблицы,
 //                                                      full - данные и модель, list - список в виде массива ['id'=>'N', 'title'=>'template']
 //                                                      (формат вывода list определяется методом listFormat класса ABPTable, в случае неверно
-//                                                      указанного шаблона будем передавать таблицу целиком)
+//                                                      указанного шаблона будем передавать таблицу целиком), count - только посчитать записи
 //     Параметры фильтрации в запросе GET:
 //         &fields=fieldName1,fieldName2,...,fieldNameN - вывод только перечисленных столбцов таблицы
 //         &order=id,[desc|asc] - сортировка выдачи: поле,порядок сортировки
@@ -49,6 +50,8 @@ use App\SkladReceiveItem;
 //                 ge => больше или равно
 //                 le => меньше или равно
 //                 like => like
+//                 in => входит в массив (IN)
+//                 ni => не входит в массив (NOT IN)
 //             !! к операнду like значение обрамляется %% с обеих сторон
 //             доступные условия:
 //                 or => ИЛИ
@@ -60,6 +63,7 @@ use App\SkladReceiveItem;
 //         &scope=stock_balance.9, - добавить в запрос scope. Параметры передаются через точки, скопы разделяются запятыми
 //         &offset - смещение относительно 0-го элемента выдачи, отсортированного согласно правилам сортировки (только совместно с limit)
 //         &limit - количество выдаваемых значений выдачи (-1 для отсутствия лимитов)
+//         &trashed=1 - выдавать помеченные на удаление записи
 //
 // POST /api/v1/table_name - добавление записи в таблицу table_name. Ответ при успехе - 201 и вставленная запись в объекте data, в случае ошибки - 500
 // PUT|PATCH /api/v1/table_name/N - изменение записи с id=N в таблице table_name. В ответе count сервер вернет кол-во измененных записей
@@ -188,7 +192,7 @@ class APIController extends Controller
                 // начальные данные
                 $data = $t;
                 // фильтры (поддерживаются только условия AND между фильтрами)
-                if ($request->has('filter')) {
+                if (isset($request->filter)) {
                     // замены
                     $replaceSourceArray = ["lt", "gt", "eq", "ne", "ge", "le", "like"];
                     $replaceTargetArray = ["<", ">", "=", "<>", ">=", "<=", "like"];
@@ -216,9 +220,38 @@ class APIController extends Controller
                         }
                     }
                 }
+                // посчитаем общее кол-во записей перед лимитами
+                $resCount = $data->count();
+                // общий метод извлечения данных для отчетов - result
                 $data = $data->result();
+                // смещение и лимиты
+                $limit = 10;
+                $offset = 0;
+                $noLimit = false;
+                if (isset($request->offset) || isset($request->limit)) {
+                    if (isset($request->limit)) {
+                        $limit = intval(urldecode($request->limit));
+                        if ($limit != -1) {
+                            $noLimit = false;
+                        } else {
+                            $noLimit = true;
+                        }
+                    }
+                    // если есть лимиты - смотрим офсет
+                    if (!$noLimit) {
+                        // если передано смещение
+                        if (isset($request->offset)) {
+                            $offset = intval(urldecode($request->offset));
+                        }
+                    }
+                }
+                if (!$noLimit) {
+                    $resData = collect($data)->skip($offset)->take($limit)->values()->all();
+                } else {
+                    $resData = $data;
+                }
                 // var_dump(\DB::connection('db1')->getQueryLog());
-                return $this->response->set_data($data, count($data), 200)->response();;
+                return $this->response->set_data($resData, $resCount, 200)->response();;
             } else {
                 return $this->response->set_err('Нет прав на просмотр записи', 403)->response();
             }
@@ -247,6 +280,8 @@ class APIController extends Controller
                 $getList = false;
                 // необходимо передавать модель
                 $getModel = false;
+                // выдать только кол-во данных
+                $onlyCount = false;
                 // если явно передан формат в запросе
                 if (isset($req['odata'])) {
                     switch ($req['odata']) {
@@ -266,6 +301,13 @@ class APIController extends Controller
                                 $getModel = false;
                             }
                             break;
+                        case 'count': {
+                                $getData = false;
+                                $getList = false;
+                                $getModel = false;
+                                $onlyCount = true;
+                            }
+                            break;
                         case 'data':
                         default: {
                                 $getData = true;
@@ -276,9 +318,9 @@ class APIController extends Controller
                 }
 
                 // надо получать данные
-                if ($getData) {
+                if ($getData || $onlyCount) {
                     // получим коллекции на основании фильтров полученного запроса
-                    $data = $t->get_table_data($request);
+                    $data = $t->get_table_data($request, $onlyCount);
 
                     // формируем результат
                     $this->response->set_data($data["data"],  $data["count"], 200);
@@ -291,6 +333,7 @@ class APIController extends Controller
                 }
                 // надо передавать модель
                 if ($getModel) {
+                    if (!$getList && !$getData) $this->response->set_data([], $t->count());
                     $this->response->set_model($t->model())->set_extensions($t->get_extensions());
                 }
                 return $this->response->response($getModel);
@@ -407,6 +450,7 @@ class APIController extends Controller
                     $data = $this_model->formalize_data_from_request($request, [], $mod_type);
                     // abort(500, json_encode($data) . json_encode($request->_copy_options));
                     // print_r($data);
+                    // dd($data);
                     try {
                         $res = DB::connection($this_model->connection())->transaction(function () use ($this_model, $request, $data, $mod_type) {
                             $save_result = $this_model->save_recursive($request, $data, $mod_type);
@@ -447,6 +491,7 @@ class APIController extends Controller
                     // если есть права на изменение записи (добавление записи - это изменение записи)
                     if ($user->can('update', $this_model)) {
                         // формализуем значения для изменения записи
+                        // dd($request->all());
                         $data = $this_model->formalize_data_from_request($request, ['id' => $id], 'edit');
                         try {
                             $res = DB::connection($t->connection())->transaction(function () use ($this_model, $request, $data) {
@@ -624,7 +669,8 @@ class APIController extends Controller
                 // $data = $tags->get()->each(function (&$model) {
                 //     $model->makeHidden(["id"]);
                 // });
-                $data = $tags->get();
+                $data = $tags->get()->sortBy('tag')->values()->all();
+                // dd($tags->get()->toArray()[0]);
                 return $this->response->set_data($data, $tags->count(), 200)->response();
             } else {
                 return $this->response->set_err('Нет прав на просмотр', 403)->response();
@@ -740,7 +786,8 @@ class APIController extends Controller
                 // $data = $tags->get()->each(function (&$model) {
                 //     $model->makeHidden(["id"]);
                 // });
-                $data = $file_list->with('file')->get();
+                $data = $file_list->with('file')->get()->sortBy('file.name')->values()->all();
+
                 return $this->response->set_data($data, $file_list->count(), 200)->response();
             } else {
                 return $this->response->set_err('Нет прав на просмотр', 403)->response();

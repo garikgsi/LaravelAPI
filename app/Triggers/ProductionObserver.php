@@ -78,7 +78,7 @@ class ProductionObserver
         if ($this->if_change('kolvo')) {
             // если проведено - сначало надо распровести
             if ($p->is_active == 1) {
-                abort(422, '#PO.Для изменения рецептуры необходимо сначала распровести производство');
+                abort(421, '#PO.Для изменения рецептуры необходимо сначала распровести производство');
                 return false;
             } else {
                 // на сколько увеличивается кол-во
@@ -89,7 +89,7 @@ class ProductionObserver
                         $this->add_item($p);
                     }
                 } else {
-                    abort(422, '#PO.Уменьшение количества готовых изделий в партии невозможно');
+                    abort(421, '#PO.Уменьшение количества готовых изделий в партии невозможно');
                     return false;
                 }
             }
@@ -98,7 +98,7 @@ class ProductionObserver
         // изменяется рецептура
         if ($this->if_change('recipe_id')) {
             if ($p->is_active == 1) {
-                abort(422, '#PO.Для изменения рецептуры необходимо сначала распровести производство');
+                abort(421, '#PO.Для изменения рецептуры необходимо сначала распровести производство');
                 return false;
             }
         }
@@ -106,7 +106,7 @@ class ProductionObserver
         // изменяется склад
         if ($this->if_change('sklad_id')) {
             if ($p->is_active == 1) {
-                abort(422, '#PO.Для изменения склада необходимо сначала распровести производство');
+                abort(421, '#PO.Для изменения склада необходимо сначала распровести производство');
                 return false;
             }
         }
@@ -115,7 +115,7 @@ class ProductionObserver
         if ($this->if_set('is_active', 0)) {
             $check = $this->check_unactive($p, "Распровести");
             if (!$check["can"]) {
-                abort(422, "#PO." . implode(", ", $check["err"]));
+                abort(421, "#PO." . implode(", ", $check["err"]));
                 return false;
             }
         }
@@ -299,7 +299,7 @@ class ProductionObserver
                                                                 // добавляем к себестоимости
                                                                 $prime_cost += abs($register_data["kolvo"]) * floatVal($replacement_nomenklatura_id->avg_price);
                                                             } else {
-                                                                abort(422, "#PO.Не записан регистр " . $register_data["nomenklatura_id"]);
+                                                                abort(421, "#PO.Не записан регистр " . $register_data["nomenklatura_id"]);
                                                             }
                                                             unset($new_production_component);
                                                         }
@@ -332,7 +332,7 @@ class ProductionObserver
                             }
                         } else {
                             // если не нашли компонент в таблице номенклатур - ошибка
-                            abort(422, "#PO.Номенклатуры " . $component->nomenklatura_id . " не найдено");
+                            abort(421, "#PO.Номенклатуры " . $component->nomenklatura_id . " не найдено");
                         }
                     }
                     // все компоненты проведены без ошибок - добавляем изделие в регистр
@@ -365,7 +365,7 @@ class ProductionObserver
                             $reg = $item->register()->save($sklad_register_item);
                         }
                         if (!$reg) {
-                            abort(422, '#PO.Произведенное изделие с Инв.№' . $item->serial . ' не добавлено в регистр');
+                            abort(421, '#PO.Произведенное изделие с Инв.№' . $item->serial . ' не добавлено в регистр');
                             return false;
                         }
                     }
@@ -377,11 +377,11 @@ class ProductionObserver
                         $n = Nomenklatura::find($nomenklatura_id);
                         $remains_errors[] = "#PO.Недостаточно " . $n->select_list_title . " в количестве " . $kolvo . " " . $n->edIsm;
                     }
-                    abort(422, json_encode($remains_errors, JSON_UNESCAPED_UNICODE));
+                    abort(421, json_encode($remains_errors, JSON_UNESCAPED_UNICODE));
                     return false;
                 }
             } else {
-                abort(422, '#PO.Проводить можно только кладовщику или администратору');
+                abort(421, '#PO.Проводить можно только кладовщику или администратору');
                 return false;
             }
         }
@@ -412,7 +412,7 @@ class ProductionObserver
         // проверяем можно ли распровести оприходованные изделия
         $check = $this->check_unactive($p);
         if (!$check["can"]) {
-            abort(422, "#PO." . implode(", ", $check["err"]));
+            abort(421, "#PO." . implode(", ", $check["err"]));
             return false;
         }
     }
@@ -425,7 +425,7 @@ class ProductionObserver
         foreach ($items as $item) {
             $res = $item->delete();
             if (!$res) {
-                abort(422, "#PO.Ошибка при удалении произведенной продукции #" . $item->id);
+                abort(421, "#PO.Ошибка при удалении произведенной продукции #" . $item->id);
                 return false;
             }
         }
@@ -516,7 +516,7 @@ class ProductionObserver
         // сотрудник
         $this->sotrudnik = $user_info->sotrudnik();
         // пользователь == кладовщик
-        $this->is_keeper = $this->sotrudnik->is_keeper($p->sklad_id);
+        $this->is_keeper = $this->sotrudnik ? $this->sotrudnik->is_keeper($p->sklad_id) : false;
         // пользователь = администратор
         $this->is_admin = $user_info->is_admin();
         // старые значения
@@ -531,7 +531,7 @@ class ProductionObserver
         if ($this->p) {
             if (isset($this->old[$field]) && isset($this->new[$field]) && $this->old[$field] != $this->new[$field] && $this->new[$field] == $val) return true;
         } else {
-            abort(422, 'Чтобы использовать if_set нужно сначала инициализировать set_vars.p');
+            abort(421, 'Чтобы использовать if_set нужно сначала инициализировать set_vars.p');
             return false;
         }
         return false;
@@ -542,7 +542,7 @@ class ProductionObserver
         if ($this->p) {
             if (isset($this->old[$field]) && isset($this->new[$field]) && $this->old[$field] != $this->new[$field]) return true;
         } else {
-            abort(422, 'Чтобы использовать if_change нужно сначала инициализировать set_vars.p');
+            abort(421, 'Чтобы использовать if_change нужно сначала инициализировать set_vars.p');
             return false;
         }
         return false;

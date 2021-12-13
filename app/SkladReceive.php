@@ -245,6 +245,6 @@ class SkladReceive extends ABPTable
     // выдаем сумму документа
     public function getSummaAttribute()
     {
-        return $this->items->sum('summa');
+        return $this->items()->sum('summa');
     }
 }

@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 use App\Common\ABPCache;
 use App\SkladRegister;
+use Illuminate\Support\Facades\DB;
+
 
 
 class Nomenklatura extends ABPTable
@@ -172,10 +174,10 @@ class Nomenklatura extends ABPTable
     public function getSelectListTitleAttribute()
     {
         $id = $this->attributes["id"];
-        $model = $this->find($this->attributes["id"]);
+        $model = $this->withTrashed()->find($this->attributes["id"]);
         $title = "";
         $fields = ["name", "artikul", "description", "part_num"];
-        $m = $model->find($id);
+        $m = $model;
         foreach ($fields as $field) {
             if (isset($m->attributes[$field]) && $m->attributes[$field]) $title .= $m->attributes[$field] . " ";
         }
@@ -221,7 +223,7 @@ class Nomenklatura extends ABPTable
                 ->whereDate('ou_date', '<=', $date);
         })->withCount(['sklad_register as stock_balance' => function ($query) use ($sklad_id, $date) {
             // в 8-й ларе уже есть withSum('sklad_register','kolvo') - здесь пока такой костыль
-            $query->select(\DB::raw('SUM(kolvo) as kolvo'))
+            $query->select(DB::raw('SUM(kolvo)'))
                 ->where('sklad_id', $sklad_id)
                 ->whereDate('ou_date', '<=', $date);
         }]);

@@ -16,7 +16,7 @@ class SerialNumObserver
         if (method_exists($doc, 'sn_movable')) {
             $res = $doc->sn_movable()->updateOrCreate(['serial_num_id' => $sn->id], ['serial_num_id' => $sn->id]);
             if (!$res) {
-                abort(422, 'Перемещения по серийному № ' . $sn->number . ' не получилось создать #' . $sn->id);
+                abort(421, 'Перемещения по серийному № ' . $sn->number . ' не получилось создать #' . $sn->id);
                 return false;
             }
         }
@@ -66,7 +66,7 @@ class SerialNumObserver
         if (count($err_list) > 0) {
             // добавляем список документов в вывод ошибки
             $err .= implode(", ", $err_list);
-            abort(422, $err);
+            abort(421, $err);
             return false;
         }
     }
@@ -80,7 +80,7 @@ class SerialNumObserver
         foreach ($registers as $register) {
             $reg_item = $register->delete();
             if (!$reg_item) {
-                abort(422, 'Перемещения по серийному№ ' . $serial_number . ' не получилось удалить');
+                abort(421, 'Перемещения по серийному№ ' . $serial_number . ' не получилось удалить');
                 return false;
             }
         }

@@ -1,10 +1,12 @@
 <?php
 
 namespace App\Common;
+
 use Exception;
 // формат ответа сервера API
 
-class ABPResponse {
+class ABPResponse
+{
 
     private $error = [];
     private $is_err = false;
@@ -21,12 +23,13 @@ class ABPResponse {
         $this->start_time = microtime(1);
     }
 
-    public function response($send_model=false) {
+    public function response($send_model = false)
+    {
         $res = [
             "is_error" => $this->is_err,
             "error" => $this->error,
             "data" => $this->data,
-            "time_request" => (round(microtime(1) - $this->start_time,3))." sec"
+            "time_request" => (round(microtime(1) - $this->start_time, 3)) . " sec"
         ];
 
         if ($send_model) {
@@ -37,10 +40,11 @@ class ABPResponse {
         }
         if (!is_null($this->count)) $res["count"] = $this->count;
 
-        return response(json_encode($res, JSON_UNESCAPED_UNICODE),$this->resp_code);
+        return response(json_encode($res, JSON_UNESCAPED_UNICODE), $this->resp_code);
     }
 
-    public function set_err($error, $code=200) {
+    public function set_err($error, $code = 200)
+    {
         $this->is_err = true;
         if (is_array($error)) {
             $this->error = $error;
@@ -51,39 +55,45 @@ class ABPResponse {
         return $this;
     }
 
-    public function set_data($data,$count=NULL,$code=NULL) {
+    public function set_data($data, $count = NULL, $code = NULL)
+    {
         $this->data = $data;
         if (!is_null($count)) $this->count = $count;
         if (!is_null($code)) $this->resp_code = $code;
         return $this;
     }
 
-    public function set_model($model) {
+    public function set_model($model)
+    {
         $this->model = $this->format_model($model);
         return $this;
     }
 
-    public function set_extensions($extensions) {
+    public function set_extensions($extensions)
+    {
         $this->extensions = $extensions;
         return $this;
     }
 
-    public function set_code($code) {
+    public function set_code($code)
+    {
         $this->resp_code = $code;
     }
 
-    public function exception(Exception $e) {
+    public function exception(Exception $e)
+    {
         $this->set_err($e->getMessage());
         if (method_exists($e, 'getStatusCode')) {
             $this->set_code($e->getStatusCode());
         } else {
-            $this->set_code(422);
+            $this->set_code(421);
         }
         return $this;
     }
 
     // подготовка модели к выводу
-    public function format_model($model) {
+    public function format_model($model)
+    {
         // $res = [];
         // foreach ($model as $field) {
         //     $res[$field["name"]] = $field;
@@ -91,7 +101,4 @@ class ABPResponse {
         // return $res;
         return $model;
     }
-
-
-
 }

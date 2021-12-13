@@ -24,11 +24,11 @@ class FileObserver
                 if ($res) {
                     $f->fill($res);
                 } else {
-                    abort(422, 'Не удалось перенести файл ' . $f->name . ' в ' . $new_driver->comment);
+                    abort(421, 'Не удалось перенести файл ' . $f->name . ' в ' . $new_driver->comment);
                     return false;
                 }
             } else {
-                abort(422, 'Не найдена исходная или конечная файловая система');
+                abort(421, 'Не найдена исходная или конечная файловая система');
                 return false;
             }
         }

@@ -35,7 +35,7 @@ class SkladMoveObserver
         // проверки
         // склады должны быть разными
         if ($sm->sklad_out_id == $sm->sklad_in_id) {
-            abort(422, 'Склад отправления равен складу назначения');
+            abort(421, 'Склад отправления равен складу назначения');
             return false;
         }
 
@@ -65,7 +65,7 @@ class SkladMoveObserver
 
         // склады должны быть разными
         if ($sm->sklad_out_id == $sm->sklad_in_id) {
-            abort(422, 'Склад отправления равен складу назначения');
+            abort(421, 'Склад отправления равен складу назначения');
             return false;
         }
         // если распроводим или проводим - снимаем/ставим обе галочки
@@ -74,20 +74,20 @@ class SkladMoveObserver
                 $sm->is_in = $sm->is_active;
                 $sm->is_out = $sm->is_active;
             } else {
-                abort(422, 'Проводить и распроводить перемещение целиком может только администратор');
+                abort(421, 'Проводить и распроводить перемещение целиком может только администратор');
                 return false;
             }
         }
 
         // отгружать может только кладовщик склада отправления
         if ($this->if_change('is_out') && !$this->is_out_keeper && !$this->is_admin) {
-            abort(422, 'Изменять проведенные накладные может только кладовщик склада отправления или администратор');
+            abort(421, 'Изменять проведенные накладные может только кладовщик склада отправления или администратор');
             return false;
         }
 
         // получать может только кладовщик склада отправления
         if ($this->if_change('is_in') && !$this->is_in_keeper && !$this->is_admin) {
-            abort(422, 'Изменять проведенные накладные может только кладовщик склада получения или администратор');
+            abort(421, 'Изменять проведенные накладные может только кладовщик склада получения или администратор');
             return false;
         }
 
@@ -122,7 +122,7 @@ class SkladMoveObserver
         // если есть ошибки остатков (чего-то где-то не хватает)
         if (count($ostatok_err)) {
             $err = "(SM)Недостаточно: " . implode(", ", $ostatok_err);
-            abort(422, $err);
+            abort(421, $err);
             return false;
         }
 
@@ -164,7 +164,7 @@ class SkladMoveObserver
             }
         }
         if (count($ostatok_err) > 0) {
-            abort(422, implode(", ", $ostatok_err));
+            abort(421, implode(", ", $ostatok_err));
             return false;
         }
     }
@@ -206,10 +206,16 @@ class SkladMoveObserver
         $user = Auth::user();
         $user_info = $user->info;
         // сотрудник
-        $this->sotrudnik = $user_info->sotrudnik();
-        // пользователь == кладовщик
-        $this->is_out_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_out_id'));
-        $this->is_in_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_in_id'));
+        $sotrudnik = $user_info->sotrudnik();
+        if ($sotrudnik) {
+            $this->sotrudnik = $user_info->sotrudnik();
+            // пользователь == кладовщик
+            $this->is_out_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_out_id'));
+            $this->is_in_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_in_id'));
+        } else {
+            $this->is_out_keeper = false;
+            $this->is_in_keeper = false;
+        }
         // пользователь = администратор
         $this->is_admin = $user_info->is_admin();
         // старые значения
@@ -224,7 +230,7 @@ class SkladMoveObserver
         if ($this->sm) {
             if (isset($this->old[$field]) && isset($this->new[$field]) && $this->old[$field] != $this->new[$field] && $this->new[$field] == $val) return true;
         } else {
-            abort(422, 'Чтобы использовать if_set нужно сначала инициализировать set_vars.sm');
+            abort(421, 'Чтобы использовать if_set нужно сначала инициализировать set_vars.sm');
             return false;
         }
         return false;
@@ -235,7 +241,7 @@ class SkladMoveObserver
         if ($this->sm) {
             if (isset($this->old[$field]) && isset($this->new[$field]) && $this->old[$field] != $this->new[$field]) return true;
         } else {
-            abort(422, 'Чтобы использовать if_change нужно сначала инициализировать set_vars.sm');
+            abort(421, 'Чтобы использовать if_change нужно сначала инициализировать set_vars.sm');
             return false;
         }
         return false;

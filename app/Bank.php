@@ -3,6 +3,8 @@
 namespace App;
 
 use App\ABPTable;
+use App\Common\ABPCache;
+
 
 class Bank extends ABPTable
 
@@ -53,5 +55,18 @@ class Bank extends ABPTable
             ["name" => "address", "name_1c" => "Адрес", "type" => "string", "title" => "Адрес", "require" => false, "default" => "", "index" => "index"],
             ["name" => "phone", "name_1c" => "Телефоны", "type" => "phone", "title" => "Телефон", "require" => false, "default" => "", "index" => "index"],
         ]);
+    }
+    // выдаем строку для селекта
+    public function getSelectListTitleAttribute()
+    {
+        $model = $this->withTrashed()->find($this->attributes["id"]);
+        $title = "";
+        $m = $model;
+
+        if (isset($m->attributes['name']) && $m->attributes['name']) $title .=  $m->attributes['name'] . " ";
+        if (isset($m->attributes['bik']) && $m->attributes['bik']) $title .= "(" . $m->attributes['bik'] . ")";
+        $title = trim($title);
+        ABPCache::put_select_list($this->table, $this->attributes["id"], $title);
+        return $title;
     }
 }

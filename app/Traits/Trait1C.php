@@ -424,6 +424,7 @@ trait Trait1C
             $field_name_1c = $field['name_1c'];
             $field_name_db = $field['name'];
             $field_type = $field['type'];
+            unset($field_val);
             // кроме игнорируемых полей
             if (!in_array($field_name_db, $ignore_fields)) {
                 // преобразования в соответствии с типом
@@ -515,10 +516,9 @@ trait Trait1C
             // обработаем табличную часть
             foreach ($this->items as $item) {
                 // номенклатура
-                $n = Nomenklatura::find($item->nomenklatura_id);
-
+                $n = Nomenklatura::withTrashed()->find($item->nomenklatura_id);
                 $line_data = [
-                    "Номенклатура_Key" => $n->get_uuid(["ВидНоменклатуры_Key" => $this->nomenklatura_type_uuid('Материалы', 'f40235d8-d84c-11ea-8133-0050569f62a1')]),
+                    "Номенклатура_Key" => $n ? $n->get_uuid(["ВидНоменклатуры_Key" => $this->nomenklatura_type_uuid('Материалы', 'f40235d8-d84c-11ea-8133-0050569f62a1')]) : '00000000-0000-0000-0000-000000000000',
                     "Содержание" => $item->nomenklatura,
                     "Количество" => floatVal($item->kolvo),
                     "Цена" => floatVal($item->price),
@@ -640,10 +640,10 @@ trait Trait1C
             // данные для 1С
             $row_data = $this->get_formalize_data_for_1c($mod_type, $add_data);
             // dd($row_data);
-            $logs[] = [
-                "data" => $row_data,
-                "method" => $mod_type
-            ];
+            // $logs[] = [
+            //     "data" => $row_data,
+            //     "method" => $mod_type
+            // ];
             // dd($row_data);
             // создаем новое соединение с 1С
             $http = new API1C();
@@ -701,6 +701,7 @@ trait Trait1C
     public function load_catalogs_from_1c()
     {
         $catalogs = [
+            "kontragents",
             "rs",
             "ed_ism",
             "firms",

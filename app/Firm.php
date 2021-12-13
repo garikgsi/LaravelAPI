@@ -154,5 +154,27 @@ class Firm extends ABPTable
             ["name" => "father_name_ip", "name_1c" => "ОтчествоИП", "type" => "string", "title" => "Отчество ИП", "require" => false, "index" => "index"],
             ["name" => "dop_okved", "name_1c" => "ДополнительныеКодыОКВЭД2", "type" => "string", "title" => "Дополнительные коды ОКВЭД", "require" => false, "index" => "index"],
         ]);
+
+        $this->sub_tables([
+            [
+                "table" => "sotrudniks", "icon" => "mdi-account", "class" => "Kontragent", "method" => "employees", "title" => "Сотрудники", "item_class" => "App\Sotrudnik", "belongs_method" => "employeable",
+                "keys" => ["morph" => "employeable", "references" => "id", "foreign_table" => "sotrudniks", "reference_table" => "kontragents"]
+            ],
+            [
+                "table" => "rs", "icon" => "mdi-bank", "class" => "RS", "method" => "rs_", "title" => "Расчетные счета", "item_class" => "App\RS", "belongs_method" => "rs_table",
+                "keys" => ["morph" => "rs_table", "references" => "id", "foreign_table" => "rs", "reference_table" => "kontragents"]
+            ],
+        ]);
+    }
+
+    // расчетные счета
+    public function rs_()
+    {
+        return $this->morphMany('App\RS', 'rs_table');
+    }
+    // сотрудники
+    public function employees()
+    {
+        return $this->morphMany('App\Sotrudnik', 'employeable');
     }
 }

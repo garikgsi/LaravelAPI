@@ -38,7 +38,7 @@ class SkladMoveItemObserver
         if ($this->sm) {
             if ($this->sm->is_active == 1) {
                 if (!$this->is_admin) {
-                    abort(422, 'В проведенный документ вносить изменения может только администратор');
+                    abort(421, 'В проведенный документ вносить изменения может только администратор');
                     return false;
                 }
             } else {
@@ -47,16 +47,16 @@ class SkladMoveItemObserver
                     if ($this->is_out_keeper) {
                         // проверяем остатки на складе отправления
                         $check = $smi->mod_register(0);
-                        if ($check["is_error"]) abort(422, $check["err"]);
+                        if ($check["is_error"]) abort(421, $check["err"]);
                     } else {
-                        abort(422, 'Отправлять со склада может только кладовщик или администратор');
+                        abort(421, 'Отправлять со склада может только кладовщик или администратор');
                         return false;
                     }
                 }
                 // если уже оприходовано
                 if ($this->sm->is_in == 1) {
                     if (!$this->is_in_keeper) {
-                        abort(422, 'Приходовать на склад может только кладовщик или администратор');
+                        abort(421, 'Приходовать на склад может только кладовщик или администратор');
                         return false;
                     }
                 }
@@ -74,7 +74,7 @@ class SkladMoveItemObserver
             for ($i = 0; $i <= 1; $i++) {
                 $res = $smi->mod_register($i, 'update_only');
                 if ($res["is_error"]) {
-                    abort(422, $res["err"]);
+                    abort(421, $res["err"]);
                     return false;
                 }
             }
@@ -94,7 +94,7 @@ class SkladMoveItemObserver
                 // var_dump($i);
                 $res = $smi->mod_register($i);
                 // print_r($res);
-                if ($res["is_error"]) abort(422, $res["err"]);
+                if ($res["is_error"]) abort(421, $res["err"]);
             }
         }
     }
@@ -111,7 +111,7 @@ class SkladMoveItemObserver
                 // var_dump("updated " . $i);
                 $res = $smi->mod_register($i, 'update_only');
                 // var_dump($i, $res);
-                if ($res["is_error"]) abort(422, $res["err"]);
+                if ($res["is_error"]) abort(421, $res["err"]);
             }
         }
     }
@@ -126,7 +126,7 @@ class SkladMoveItemObserver
         if ($this->sm) {
             // обновим серийные номера
             $sn_res = $smi->update_sn_register();
-            if (!$sn_res) abort(422, 'Не удалось обновить базу данных серийных номеров');
+            if (!$sn_res) abort(421, 'Не удалось обновить базу данных серийных номеров');
         }
     }
 
@@ -141,7 +141,7 @@ class SkladMoveItemObserver
             // проверяем остатки на складе получения, если приходован
             for ($i = 0; $i <= 1; $i++) {
                 $res = $smi->mod_register($i, 'check_for_delete');
-                if ($res["is_error"]) abort(422, $res["err"]);
+                if ($res["is_error"]) abort(421, $res["err"]);
             }
         }
     }
@@ -156,11 +156,11 @@ class SkladMoveItemObserver
             // удаляем регистр
             for ($i = 0; $i <= 1; $i++) {
                 $res = $smi->mod_register($i, 'delete_only');
-                if ($res["is_error"]) abort(422, $res["err"]);
+                if ($res["is_error"]) abort(421, $res["err"]);
             }
             // удалим серийные номера
             $sn_res = $smi->delete_sn_register();
-            if (!$sn_res) abort(422, 'Не удалось очистить базу данных серийных номеров для записи');
+            if (!$sn_res) abort(421, 'Не удалось очистить базу данных серийных номеров для записи');
         }
     }
 
@@ -185,10 +185,16 @@ class SkladMoveItemObserver
             $user = Auth::user();
             $user_info = $user->info;
             // сотрудник
-            $this->sotrudnik = $user_info->sotrudnik();
-            // пользователь == кладовщик
-            $this->is_out_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_out_id'));
-            $this->is_in_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_in_id'));
+            $sotrudnik = $user_info->sotrudnik();
+            if ($sotrudnik) {
+                $this->sotrudnik = $user_info->sotrudnik();
+                // пользователь == кладовщик
+                $this->is_out_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_out_id'));
+                $this->is_in_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_in_id'));
+            } else {
+                $this->is_out_keeper = false;
+                $this->is_in_keeper = false;
+            }
             // пользователь = администратор
             $this->is_admin = $user_info->is_admin();
             // старые значения
@@ -206,7 +212,7 @@ class SkladMoveItemObserver
         if ($this->smi) {
             if (isset($this->old[$field]) && isset($this->new[$field]) && $this->old[$field] != $this->new[$field]) return true;
         } else {
-            abort(422, '#SMIO.Чтобы использовать if_change нужно сначала инициализировать переменные');
+            abort(421, '#SMIO.Чтобы использовать if_change нужно сначала инициализировать переменные');
             return false;
         }
         return false;

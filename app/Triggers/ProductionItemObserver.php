@@ -63,7 +63,7 @@ class ProductionItemObserver
         if ($pi->serial) {
             $res = $pi->syncSerials($pi->serial);
             if ($res["is_error"]) {
-                abort(422, "#PIO." . implode(", ", $res["errors"]));
+                abort(421, "#PIO." . implode(", ", $res["errors"]));
                 return false;
             }
         }
@@ -77,14 +77,14 @@ class ProductionItemObserver
         if ($this->p) {
             // изменять проведенное могут только кладовщик или администратор
             if (($this->p->is_active == 1 || $this->pi->is_producted == 1) && !$this->is_keeper && !$this->is_admin) {
-                abort(422, '#PIO.Изменять проведенную позицию можно только кладовщику или администратору');
+                abort(421, '#PIO.Изменять проведенную позицию можно только кладовщику или администратору');
                 return false;
             }
 
             // если изделие приходуем на склад - проверим, чтобы документ был проведен
             if ($this->if_set('is_producted', 1)) {
                 if ($this->p->is_active != 1) {
-                    abort(422, '#PIO.Невозможно оприходовать на склад готовое изделие при непроведенной накладной');
+                    abort(421, '#PIO.Невозможно оприходовать на склад готовое изделие при непроведенной накладной');
                     return false;
                 }
             }
@@ -92,7 +92,7 @@ class ProductionItemObserver
             // проверим регистры накопления
             $res = $pi->mod_register(1);
             if ($res["is_error"]) {
-                abort(422, "#PIO." . $res["err"]);
+                abort(421, "#PIO." . $res["err"]);
                 return false;
             }
         }
@@ -107,7 +107,7 @@ class ProductionItemObserver
             // обновим регистры накопления
             $res = $pi->mod_register(1, 'update_only');
             if ($res["is_error"]) {
-                abort(422, "#PIO." . $res["err"]);
+                abort(421, "#PIO." . $res["err"]);
                 return false;
             }
 
@@ -115,7 +115,7 @@ class ProductionItemObserver
             // обновим серийные номера
             $sn_res = $pi->update_sn_register();
             if (!$sn_res) {
-                abort(422, '#PIO.Не удалось обновить базу данных серийных номеров');
+                abort(421, '#PIO.Не удалось обновить базу данных серийных номеров');
                 return false;
             }
 
@@ -137,14 +137,14 @@ class ProductionItemObserver
             // проверим права на удаление
             // удалять могут только кладовщик или администратор
             if (($this->p->is_active == 1 || $this->pi->is_producted == 1) && !$this->is_keeper && !$this->is_admin) {
-                abort(422, '#PIO. Удалять из проведенной позиции можно только кладовщику или администратору');
+                abort(421, '#PIO. Удалять из проведенной позиции можно только кладовщику или администратору');
                 return false;
             }
 
             // проверим регистры накопления
             $res = $pi->mod_register(1, 'check_for_delete');
             if ($res["is_error"]) {
-                abort(422, "#PIO. " . $res["err"]);
+                abort(421, "#PIO. " . $res["err"]);
                 return false;
             }
         }
@@ -166,13 +166,13 @@ class ProductionItemObserver
             // удалим регистр
             $res = $pi->mod_register(1, 'delete_only');
             if ($res["is_error"]) {
-                abort(422, "#PIO." . $res["err"]);
+                abort(421, "#PIO." . $res["err"]);
                 return false;
             }
             // удалим серийные номера
             $sn_res = $pi->delete_sn_register();
             if (!$sn_res) {
-                abort(422, '#PIO.Не удалось очистить базу данных серийных номеров для записи');
+                abort(421, '#PIO.Не удалось очистить базу данных серийных номеров для записи');
                 return false;
             }
         }
@@ -204,7 +204,7 @@ class ProductionItemObserver
             $this->sklad = $p->sklad_id;
             $this->sklad_title = $p->sklad;
             // пользователь == кладовщик
-            $this->is_keeper = $this->sotrudnik->is_keeper($p->sklad_id);
+            $this->is_keeper = $this->sotrudnik ? $this->sotrudnik->is_keeper($p->sklad_id) : false;
         }
     }
 
@@ -214,7 +214,7 @@ class ProductionItemObserver
         if ($this->pi) {
             if (isset($this->old[$field]) && isset($this->new[$field]) && $this->old[$field] != $this->new[$field] && $this->new[$field] == $val) return true;
         } else {
-            abort(422, '#PIO. Чтобы использовать if_set нужно сначала инициализировать переменные');
+            abort(421, '#PIO. Чтобы использовать if_set нужно сначала инициализировать переменные');
             return false;
         }
         return false;
@@ -225,7 +225,7 @@ class ProductionItemObserver
         if ($this->pi) {
             if (isset($this->old[$field]) && isset($this->new[$field]) && $this->old[$field] != $this->new[$field]) return true;
         } else {
-            abort(422, '#PIO. Чтобы использовать if_change нужно сначала инициализировать переменные');
+            abort(421, '#PIO. Чтобы использовать if_change нужно сначала инициализировать переменные');
             return false;
         }
         return false;

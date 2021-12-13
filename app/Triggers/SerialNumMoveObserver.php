@@ -24,7 +24,7 @@ class SerialNumMoveObserver
         if (!$check_delete["can"]) {
             $err = "#2:Серийный.№ '.$snm->number.' невозможно удалить из регистра, т.к. он указан в следующих документах: ";
             $err .= implode(", ", $check_delete["err"]);
-            abort(422, $err);
+            abort(421, $err);
             return false;
         }
     }
@@ -95,7 +95,7 @@ class SerialNumMoveObserver
         foreach ($registers as $register) {
             $reg_item = $register->forceDelete();
             if (!$reg_item) {
-                abort(422, 'Серийный.№ ' . $snm->number . ' не удален из регистра');
+                abort(421, 'Серийный.№ ' . $snm->number . ' не удален из регистра');
                 return false;
             }
         }
@@ -199,7 +199,7 @@ class SerialNumMoveObserver
                             $existed_kolvo = $this->sn_kolvo_exists($snm->serial_num_id, $ddata['sklad_id']);
                             // если есть серийник
                             if ($existed_kolvo < abs($ddata['kolvo'])) {
-                                abort(422, $snm->nomenklatura . ' с серийным № ' . $snm->number . ' нет на складе');
+                                abort(421, $snm->nomenklatura . ' с серийным № ' . $snm->number . ' нет на складе');
                                 return false;
                             }
                         }
@@ -216,7 +216,7 @@ class SerialNumMoveObserver
                         $reg = $snm->sn_register()->save($sn_register_item);
                     }
                     if (!$reg) {
-                        abort(422, 'Серийный.№ ' . $snm->number . ' не добавлен в регистр');
+                        abort(421, 'Серийный.№ ' . $snm->number . ' не добавлен в регистр');
                         return false;
                     }
                 }
@@ -228,12 +228,12 @@ class SerialNumMoveObserver
                 } else {
                     $err = "#1: " . $snm->nomenklatura . " с серийным.№ " . $snm->number . " невозможно удалить из регистра, т.к. он указан в следующих документах: ";
                     $err .= implode(", ", $check_delete["err"]);
-                    abort(422, $err);
+                    abort(421, $err);
                     return false;
                 }
             }
         } else {
-            abort(422, 'Не удалось идентифицировать документ для внесения серийного.№ ' . $sn->number . ' в регистр');
+            abort(421, 'Не удалось идентифицировать документ для внесения серийного.№ ' . $sn->number . ' в регистр');
             return false;
         }
     }

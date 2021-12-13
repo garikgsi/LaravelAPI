@@ -49,14 +49,14 @@ class ProductionComponentObserver
         if ($this->p) {
             // изменять проведенное могут только кладовщик или администратор
             if (($this->p->is_active == 1 || $this->pi->is_producted == 1) && !$this->is_keeper && !$this->is_admin) {
-                abort(422, '#PCO.Изменять проведенную позицию можно только кладовщику или администратору');
+                abort(421, '#PCO.Изменять проведенную позицию можно только кладовщику или администратору');
                 return false;
             }
 
             // если изделие приходуем на склад - проверим, чтобы документ был проведен
             if ($this->if_set('is_producted', 1)) {
                 if ($this->p->is_active != 1) {
-                    abort(422, '#PCO.Невозможно оприходовать на склад готовое изделие при непроведенной накладной');
+                    abort(421, '#PCO.Невозможно оприходовать на склад готовое изделие при непроведенной накладной');
                     return false;
                 }
             }
@@ -64,7 +64,7 @@ class ProductionComponentObserver
             // проверим регистры накопления
             $res = $pc->mod_register(0);
             if ($res["is_error"]) {
-                abort(422, "#PCO." . $res["err"]);
+                abort(421, "#PCO." . $res["err"]);
                 return false;
             }
         }
@@ -79,14 +79,14 @@ class ProductionComponentObserver
             // обновим регистры накопления
             $res = $pc->mod_register(0, 'update_only');
             if ($res["is_error"]) {
-                abort(422, "#PCO." . $res["err"]);
+                abort(421, "#PCO." . $res["err"]);
                 return false;
             }
 
             // обновим серийные номера
             $sn_res = $pc->update_sn_register();
             if (!$sn_res) {
-                abort(422, '#PCO.Не удалось обновить базу данных серийных номеров');
+                abort(421, '#PCO.Не удалось обновить базу данных серийных номеров');
                 return false;
             }
         }
@@ -100,14 +100,14 @@ class ProductionComponentObserver
         if ($this->p) {
             // удалять могут только кладовщик или администратор
             if (($this->p->is_active == 1 || $this->pi->is_producted == 1) && !$this->is_keeper && !$this->is_admin) {
-                abort(422, '#PCO.Удалять из проведенной позиции можно только кладовщику или администратору');
+                abort(421, '#PCO.Удалять из проведенной позиции можно только кладовщику или администратору');
                 return false;
             }
 
             // проверим регистры накопления
             $res = $pc->mod_register(0, 'check_for_delete');
             if ($res["is_error"]) {
-                abort(422, "#PCO." . $res["err"]);
+                abort(421, "#PCO." . $res["err"]);
                 return false;
             }
         }
@@ -123,13 +123,13 @@ class ProductionComponentObserver
             // удалим регистр
             $res = $pc->mod_register(0, 'delete_only');
             if ($res["is_error"]) {
-                abort(422, "#PCO." . $res["err"]);
+                abort(421, "#PCO." . $res["err"]);
                 return false;
             }
             // удалим серийные номера
             $sn_res = $pc->delete_sn_register();
             if (!$sn_res) {
-                abort(422, '#PCO.Не удалось очистить базу данных серийных номеров для записи');
+                abort(421, '#PCO.Не удалось очистить базу данных серийных номеров для записи');
                 return false;
             }
         }
@@ -165,7 +165,7 @@ class ProductionComponentObserver
                 $this->sklad = $p->sklads;
                 $this->sklad_title = $p->sklad;
                 // пользователь == кладовщик
-                $this->is_keeper = $this->sotrudnik->is_keeper($this->sklad->id);
+                $this->is_keeper = $this->sotrudnik ? $this->sotrudnik->is_keeper($this->sklad->id) : false;
             }
         }
     }
@@ -176,7 +176,7 @@ class ProductionComponentObserver
         if ($this->pi) {
             if (isset($this->old[$field]) && isset($this->new[$field]) && $this->old[$field] != $this->new[$field] && $this->new[$field] == $val) return true;
         } else {
-            abort(422, 'Чтобы использовать if_set нужно сначала инициализировать set_vars.pc');
+            abort(421, 'Чтобы использовать if_set нужно сначала инициализировать set_vars.pc');
             return false;
         }
         return false;
@@ -187,7 +187,7 @@ class ProductionComponentObserver
         if ($this->pi) {
             if (isset($this->old[$field]) && isset($this->new[$field]) && $this->old[$field] != $this->new[$field]) return true;
         } else {
-            abort(422, 'Чтобы использовать if_change нужно сначала инициализировать set_vars.pc');
+            abort(421, 'Чтобы использовать if_change нужно сначала инициализировать set_vars.pc');
             return false;
         }
         return false;

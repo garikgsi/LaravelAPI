@@ -71,6 +71,7 @@ class Kontragent extends ABPTable
         $this->table('kontragents');
         $this->has_folders_1c(true);
         $this->has_files(true);
+        $this->has_groups(true);
         $this->sub_tables([
             ["name_1c" => "КонтактнаяИнформация"],
             ["name_1c" => "ДополнительныеРеквизиты"],
@@ -87,17 +88,54 @@ class Kontragent extends ABPTable
         // $this->fillable(['full_name','type','inn','kpp','okpo','passport','rs_id','ogrn','svid_num','svid_date','reg_date']);
 
         $this->model([
-            ["name" => "full_name", "name_1c" => "НаименованиеПолное", "type" => "string", "title" => "Полное наименование", "require" => false, "index" => "index", "show_in_table" => true],
-            ["name" => "type", "name_1c" => "ЮридическоеФизическоеЛицо", "type" => "enum", "data" => ["ЮридическоеЛицо", "ФизическоеЛицо"], "title" => "Юридическое или физическое лицо", "require" => true, "index" => "index", "show_in_table" => true],
-            ["name" => "inn", "name_1c" => "ИНН", "type" => "string", "title" => "ИНН", "require" => true, "index" => "index", "show_in_table" => true],
+            ["name" => "full_name", "name_1c" => "НаименованиеПолное", "type" => "string", "title" => "Полное наименование", "require" => false, "index" => "index", "show_in_table" => true, "size" => 4],
+            ["name" => "type", "name_1c" => "ЮридическоеФизическоеЛицо", "type" => "enum", "items" => ["ЮридическоеЛицо", "ФизическоеЛицо"], "title" => "Юридическое или физическое лицо", "require" => true, "index" => "index", "show_in_table" => true, "size" => 12],
+            ["name" => "inn", "name_1c" => "ИНН", "type" => "string", "title" => "ИНН", "require" => false, "index" => "index", "show_in_table" => true],
             ["name" => "kpp", "name_1c" => "КПП", "type" => "string", "title" => "КПП", "require" => false, "index" => "index", "show_in_table" => true],
             ["name" => "okpo", "name_1c" => "КодПоОКПО", "type" => "string", "title" => "Код по ОКПО", "require" => false, "index" => "index"],
-            ["name" => "passport", "name_1c" => "ДокументУдостоверяющийЛичность", "type" => "string", "title" => "Документ удостоверяющий личность", "require" => false, "index" => "index"],
-            ["name" => "rs_id", "name_1c" => "ОсновнойБанковскийСчет_Key", "type" => "select", "table" => "rs", "table_class" => "RS", "title" => "Основной расчетный счет", "require" => false, "default" => 1, "index" => "index"],
-            ["name" => "ogrn", "name_1c" => "РегистрационныйНомер", "type" => "string", "title" => "ОГРН", "require" => true, "index" => "index", "show_in_table" => true],
-            ["name" => "svid_num", "name_1c" => "СвидетельствоСерияНомер", "type" => "string", "title" => "Свидетельство серия и номер", "require" => false, "index" => "index"],
-            ["name" => "svid_date", "name_1c" => "СвидетельствоДатаВыдачи", "type" => "date", "title" => "Дата выдачи свидетельства", "require" => false, "default" => "0000-00-00", "index" => "index"],
-            ["name" => "reg_date", "name_1c" => "ДатаРегистрации", "type" => "date", "title" => "Дата регистрации", "require" => false, "default" => "0000-00-00", "index" => "index"],
+            ["name" => "passport", "name_1c" => "ДокументУдостоверяющийЛичность", "type" => "string", "title" => "Документ удостоверяющий личность", "require" => false, "index" => "index", "show_in_form" => false],
+            ["name" => "rs_id", "name_1c" => "ОсновнойБанковскийСчет_Key", "type" => "select", "table" => "rs", "table_class" => "RS", "title" => "Основной расчетный счет", "require" => false, "default" => 1, "index" => "index", "show_in_table" => false, "show_in_form" => false],
+            ["name" => "ogrn", "name_1c" => "РегистрационныйНомер", "type" => "string", "title" => "ОГРН", "require" => false, "index" => "index", "show_in_table" => true],
+            ["name" => "svid_num", "name_1c" => "СвидетельствоСерияНомер", "type" => "string", "title" => "Свидетельство серия и номер", "require" => false, "index" => "index", "show_in_form" => false],
+            ["name" => "svid_date", "name_1c" => "СвидетельствоДатаВыдачи", "type" => "date", "title" => "Дата выдачи свидетельства", "require" => false, "default" => "0000-00-00", "index" => "index", "show_in_form" => false],
+            ["name" => "reg_date", "name_1c" => "ДатаРегистрации", "type" => "date", "title" => "Дата регистрации", "require" => false, "default" => "0000-00-00", "index" => "index", "show_in_form" => false],
+            ["name" => "address", "type" => "string", "title" => "Юридический адрес", "require" => false, "index" => "index", "show_in_table" => false, "size" => 4],
+            ["name" => "phone", "type" => "phone", "title" => "Телефон", "require" => false, "index" => "index", "show_in_table" => true],
+            ["name" => "www", "type" => "string", "title" => "Сайт", "require" => false, "index" => "index", "show_in_table" => false],
+            ["name" => "email", "type" => "email", "title" => "Email", "require" => false, "index" => "index", "show_in_table" => true],
+
+
         ]);
+
+        $this->sub_tables([
+            [
+                "table" => "sotrudniks", "icon" => "mdi-account", "class" => "Kontragent", "method" => "employees", "title" => "Сотрудники", "item_class" => "App\Sotrudnik", "belongs_method" => "employeable",
+                "keys" => ["morph" => "employeable", "references" => "id", "foreign_table" => "sotrudniks", "reference_table" => "kontragents"]
+            ],
+            [
+                "table" => "rs", "icon" => "mdi-bank", "class" => "RS", "method" => "rs_", "title" => "Расчетные счета", "item_class" => "App\RS", "belongs_method" => "rs_table",
+                "keys" => ["morph" => "rs_table", "references" => "id", "foreign_table" => "rs", "reference_table" => "kontragents"]
+            ],
+            [
+                "table" => "contracts", "icon" => "mdi-file-sign", "class" => "Contract", "method" => "contracts", "title" => "Договоры", "item_class" => "App\Contract", "belongs_method" => "contractable",
+                "keys" => ["morph" => "contractable", "references" => "id", "foreign_table" => "contracts", "reference_table" => "kontragents"]
+            ],
+        ]);
+    }
+
+    // сотрудники
+    public function employees()
+    {
+        return $this->morphMany('App\Sotrudnik', 'employeable');
+    }
+    // расчетные счета
+    public function rs_()
+    {
+        return $this->morphMany('App\RS', 'rs_table');
+    }
+    // договоры
+    public function contracts()
+    {
+        return $this->morphMany('App\Contract', 'contractable');
     }
 }

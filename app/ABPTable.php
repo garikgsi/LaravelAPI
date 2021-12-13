@@ -29,6 +29,8 @@ use Exception;
 use App\Nomenklatura;
 use Hamcrest\Arrays\IsArray;
 
+set_time_limit(0);
+
 class ABPTable extends Model
 {
     use ABPSoftDeletes;
@@ -160,6 +162,16 @@ class ABPTable extends Model
         "production_items" => ["Title" => "Производимые изделия", "Class" => "App\ProductionItem", "Name" => "production_items"],
         "production_components" => ["Title" => "Компоненты изделия", "Class" => "App\ProductionComponent", "Name" => "production_components"],
         "production_replaces" => ["Title" => "Замены в производстве", "Class" => "App\ProductionReplace", "Name" => "production_replaces"],
+
+
+        "contract_types" => ["Title" => "Виды договоров", "Class" => "App\ContractType", "Name" => "contract_types"],
+        "contracts" => ["Title" => "Договоры", "Class" => "App\Contract", "Name" => "contracts"],
+        "orders" => ["Title" => "Заказы", "Class" => "App\Order", "Name" => "orders"],
+        "order_items" => ["Title" => "Позиции заказа", "Class" => "App\OrderItem", "Name" => "order_items"],
+        "invoices" => ["Title" => "Счета", "Class" => "App\Invoice", "Name" => "invoices"],
+        "invoice_items" => ["Title" => "Позиции счета", "Class" => "App\InvoiceItem", "Name" => "invoice_items"],
+        "acts" => ["Title" => "Реализации", "Class" => "App\Act", "Name" => "acts"],
+        "act_items" => ["Title" => "Позиции накладной", "Class" => "App\ActItem", "Name" => "act_items"],
         // админка сайта
         "site_contents" => ["Title" => "Контент раздела", "Class" => "App\SiteContent", "Name" => "site_contents"],
         "site_menu_points" => ["Title" => "Раздел сайта", "Class" => "App\SiteMenuPoint", "Name" => "site_menu_points"],
@@ -179,6 +191,8 @@ class ABPTable extends Model
         // серийники
         "serial_nums" => ["Title" => "Серийные номера", "Class" => "App\SerialNum", "Name" => "serial_nums"],
     ];
+    // преобразователь модели
+    private $modModel = [];
 
     public function __construct($table = null)
     {
@@ -228,7 +242,8 @@ class ABPTable extends Model
     {
         if (isset($this->attributes['id'])) {
             $value = $this->attributes['id'];
-            return $this->find($value)->files('document')->get($this->files_fields);
+            $model = $this->find($value);
+            return $model ? $model->files('document')->get($this->files_fields) : null;
         }
         return null;
     }
@@ -237,7 +252,8 @@ class ABPTable extends Model
     {
         if (isset($this->attributes['id'])) {
             $value = $this->attributes['id'];
-            return $this->find($value)->file_list()->select(['id', 'file_id'])->get();
+            $model = $this->find($value);
+            return $model ? $model->file_list()->select(['id', 'file_id'])->get() : null;
         }
         return null;
     }
@@ -246,7 +262,8 @@ class ABPTable extends Model
     {
         if (isset($this->attributes['id'])) {
             $value = $this->attributes['id'];
-            return $this->find($value)->files('image')->get($this->files_fields);
+            $model = $this->find($value);
+            return $model ? $model->files('image')->get($this->files_fields) : null;
         }
     }
     // основная картинка
@@ -258,7 +275,8 @@ class ABPTable extends Model
                 $value = $this->attributes['id'];
                 // найдем основное изображение
                 // $image = $this->find($value)->files('image')->where('is_main',true)->first();
-                $image = $this->find($value)->files('image')->orderBy('is_main', 'desc')->first();
+                $model = $this->find($value);
+                $image = $model ? $model->files('image')->orderBy('is_main', 'desc')->first() : null;
                 if ($image) {
                     try {
                         $disk = new ABPStorage($image->driver);
@@ -400,19 +418,19 @@ class ABPTable extends Model
     {
         $title = '';
         if (isset($this->attributes["id"])) {
+            $model = $this->withTrashed()->find($this->attributes["id"]);
             switch ($this->table_type) {
                 case "document": {
-                        $model = $this->find($this->attributes["id"]);
-                        $title = "№ " . $model->doc_num . " от " . $model->doc_date;
+                        $title = $model ? "№ " . $model->doc_num . " от " . $model->doc_date : 'Не установлено';
                     }
                     break;
                 case "sub_table": {
-                        $title = $this->find($this->attributes["id"])->name;
+                        $title = $model ? $model->name : 'Не установлено';
                     }
                     break;
                 case "catalog":
                 default: {
-                        $title = $this->find($this->attributes["id"])->name;
+                        $title = $model ? $model->name : 'Не установлено';
                     }
                     break;
             }
@@ -431,6 +449,17 @@ class ABPTable extends Model
     //         self::$user_id = $id;
     //     }
     // }
+
+    // сеттер или геттер иконки модификатора модели
+    public function modModel($newMod)
+    {
+        if (is_null($newMod)) {
+            return $this->modModel;
+        } else {
+            $this->modModel = $newMod;
+            return;
+        }
+    }
 
     // геттер всех таблиц в бд
     public function tables()
@@ -643,7 +672,7 @@ class ABPTable extends Model
 
 
     // получим коллекции на основании фильтров полученного запроса
-    public function apply_request_filters($request, $replaces = [], $id = null)
+    public function apply_request_filters($request, $replaces = [], $id = null, $only_count = false)
     {
         // параметры запроса
         $req = array_merge($request->input(), $replaces);
@@ -661,8 +690,12 @@ class ABPTable extends Model
         if ($this->table_type == 'report') {
             // фильтр столбцов для отчетов
         } else {
-            if (isset($req['fields'])) {
+            if (isset($req['fields']) || isset($req["trashed"])) {
                 $cols = array();
+                // с удаленными записями
+                if (isset($req["trashed"])) {
+                    $cols[] = "deleted_at";
+                }
                 $fields = explode(',', urldecode($req['fields']));
                 foreach ($fields as $f) {
                     $f = trim($f);
@@ -719,8 +752,9 @@ class ABPTable extends Model
             $replaceSourceArray = ["lt", "gt", "eq", "ne", "ge", "le", "like"];
             $replaceTargetArray = ["<", ">", "=", "<>", ">=", "<=", "like"];
             $req["filter"] = urldecode($req["filter"]);
-            if (preg_match_all("/(\w+)\s+(lt|gt|eq|ne|ge|le|like|in|ni)\s+([\[\w\]\,\"]+)(\s+(or|and)\s+)?/iu", $req['filter'], $filterResults, PREG_SET_ORDER)) {
+            if (preg_match_all("/(\w+)\s+(lt|gt|eq|ne|ge|le|like|in|ni)\s+([\[\w\]\,\"\\\]+)(\s+(or|and)\s+)?/iu", $req['filter'], $filterResults, PREG_SET_ORDER)) {
                 $nextExp = "and";
+                // dd($filterResults);
                 foreach ($filterResults as $filterResult) {
                     $column = trim($filterResult[1]);
                     if ($this->has_column($column)) {
@@ -773,7 +807,10 @@ class ABPTable extends Model
                                     }
                             }
                         }
+                        // $data->dd();
                         if (isset($filterResult[5])) $nextExp = strtolower($filterResult[5]);
+                    } else {
+                        // dd('no col ' . $column);
                     }
                 }
             }
@@ -787,7 +824,8 @@ class ABPTable extends Model
                     foreach ($search_fields as $field => $exp) {
                         switch ($exp) {
                             case 'like': {
-                                    $query->orWhere($field, 'like', '%' . $search . '%');
+                                    $query->orWhere(DB::raw('lower(' . $field . ')'), 'like', '%' . strtolower($search) . '%');
+                                    // $query->orWhere($field, 'ilike', '%' . $search . '%');
                                 }
                                 break;
                             default: {
@@ -799,6 +837,7 @@ class ABPTable extends Model
                 });
             }
         }
+        // $data->dd();
         // блок фильтрации по группам
         if (isset($req['tags'])) {
             $tags = explode(',', urldecode($req['tags']));
@@ -812,6 +851,10 @@ class ABPTable extends Model
             $data = $data->where('id', $id);
         }
 
+        // с удаленными записями
+        if (isset($req["trashed"])) {
+            $data = $data->withTrashed();
+        }
         // проверим контексты
         if (isset($req["scope"])) {
             $scopes = explode(",", $req["scope"]);
@@ -827,86 +870,92 @@ class ABPTable extends Model
                 }
             }
         }
+        // $data->dd();
+        // dd($data->count());
 
         // посчитаем общее кол-во записей перед лимитами
         $this->set_count($data->count());
 
-        // дефолтные настройки лимитов
-        $defLimit = 10;
-        // если передано смещение и лимит
-        if (isset($req['limit'])) {
-            if (isset($req['offset'])) {
-                $req["limit"] = urldecode($req["limit"]);
-                $req["offset"] = urldecode($req["offset"]);
-                if ($req["limit"] != -1) {
-                    $data = $data->limit($req['limit']);
-                    $data = $data->offset($req['offset']);
-                }
+        if ($only_count) {
+            return $this->get_count();
+        } else {
+            // дефолтные настройки лимитов
+            $defLimit = 10;
+            // если передано смещение и лимит
+            if (isset($req['limit'])) {
+                $req["limit"] = intval(urldecode($req["limit"]));
+                if ($req['limit'] != -1) $data = $data->limit($req['limit']);
             } else {
-                if ($req['limit'] != -1) {
-                    $data = $data->limit($defLimit);
+                $data = $data->limit($defLimit);
+            }
+            // если передано смещение
+            if (isset($req['offset']) && (!isset($req['limit']) || (isset($req['limit']) && $req['limit'] != -1))) {
+                $req["offset"] = urldecode($req["offset"]);
+                $data = $data->offset($req['offset']);
+            } else {
+                if (isset($req['limit']) && $req['limit'] != -1) $data->offset(0);
+            }
+
+            // проверим расширения
+            if (isset($req["extensions"])) {
+                $extensions = explode(',', urldecode($req['extensions']));
+                foreach ($extensions as $extension) {
+                    $make_visible[] = trim($extension);
                 }
             }
-        } else {
-            $data = $data->limit($defLimit);
-        }
 
-        // проверим расширения
-        if (isset($req["extensions"])) {
-            $extensions = explode(',', urldecode($req['extensions']));
-            foreach ($extensions as $extension) {
-                $make_visible[] = trim($extension);
+            // // если это документ - выдадим еще и таблицу
+            // if ($this->has_items()) {
+            // // if ($this->table_type == 'document') {
+            //     $data = $data->with("items");
+            // }
+
+            // выдадим подчиненные таблицы
+            $sub_tables_arr = [];
+
+            foreach ($this->sub_tables() as $st) {
+                if (isset($st["method"]) && $st["method"] != "items") $sub_tables_arr[] = $st["method"];
+                // if (isset($st["method"]) && method_exists($this, $st["method"])) $sub_tables_arr[] = $st["method"];
             }
-        }
+            $data = $data->with($sub_tables_arr);
 
-        // // если это документ - выдадим еще и таблицу
-        // if ($this->has_items()) {
-        // // if ($this->table_type == 'document') {
-        //     $data = $data->with("items");
-        // }
+            // var_dump($data->dd());
+            // return;
 
-        // выдадим подчиненные таблицы
-        $sub_tables_arr = [];
+            // сохраним коллекцию
+            $this->data = $data;
 
-        foreach ($this->sub_tables() as $st) {
-            if (isset($st["method"])) $sub_tables_arr[] = $st["method"];
-            // if (isset($st["method"]) && method_exists($this, $st["method"])) $sub_tables_arr[] = $st["method"];
-        }
-        $data = $data->with($sub_tables_arr);
+            if ($this->table_type == 'report') {
+                return $data;
+            } else {
 
+                // проеобразуем коллекцию в массив
+                $collection = $data->get();
 
-        // var_dump($data->dd());
-        // return;
-
-        // сохраним коллекцию
-        $this->data = $data;
-
-        if ($this->table_type == 'report') {
-            return $data;
-        } else {
-
-            // проеобразуем коллекцию в массив
-            $collection = $data->get();
-
-            // скроем ненужные поля
-            if (!$show_all_fields) {
-                $make_hidden = $this->appends;
+                // скроем ненужные поля
+                // if (!$show_all_fields) {
+                // $make_hidden = $this->appends;
+                $make_hidden = [];
+                // $make_visible = array_merge($make_visible, ["permissions"]);
                 if (count($make_visible) > 0 || count($make_hidden) > 0) {
+                    // dd($make_visible, $make_hidden);
+
                     $collection = $collection->each(function (&$model) use ($make_visible, $make_hidden) {
                         if (count($make_hidden) > 0) $model->makeHidden($make_hidden);
                         if (count($make_visible) > 0) $model->makeVisible($make_visible);
                     });
                 }
+                // }
+
+                // для записей NULL выведем пустую строку
+                if ($collection) $collection = $collection->toArray();
+                // array_walk_recursive($collection, function(&$item) {
+                //     $item = is_null($item) || $item=='null' ? '' : $item;
+                // });
+
+                // возвращаем массив данных
+                return $collection;
             }
-
-            // для записей NULL выведем пустую строку
-            if ($collection) $collection = $collection->toArray();
-            // array_walk_recursive($collection, function(&$item) {
-            //     $item = is_null($item) || $item=='null' ? '' : $item;
-            // });
-
-            // возвращаем массив данных
-            return $collection;
         }
     }
 
@@ -921,10 +970,11 @@ class ABPTable extends Model
     }
 
     // возвращаем список данных для таблицы в соответствии с фильтрами в запросе
-    public function get_table_data($request)
+    public function get_table_data($request, $only_count = false)
     {
+        $data = $this->apply_request_filters($request, [], null, $only_count);
         return [
-            "data" => $this->apply_request_filters($request),
+            "data" => $data,
             "count" => $this->get_count()
         ];
     }
@@ -1410,7 +1460,8 @@ class ABPTable extends Model
                 // dd($e);
                 // ошибка исполнения запроса
                 // $errors[] = 'Ошибка БД №' . $e->code . ', SQL:' . $e->sql;
-                $errors[] = "Ошибка базы данных";
+                $errors[] = 'Ошибка БД: bindings=' . implode(',', $e->getBindings()) . ', SQL=' . $e->getSql();
+                // $errors[] = "Ошибка базы данных";
             } catch (\Exception $e) {
                 // dd($e);
                 $errors[] = "Ошибка обработки запроса " . (isset($e->message) ? $e->message : '') . " in file " . (isset($e->file) ? $e->file : '') . ", line " . (isset($e->line) ? $e->line : '');
@@ -1603,7 +1654,6 @@ class ABPTable extends Model
         //     "is_error" => $is_error          наличие ошибки
         // ];
 
-
         // столбцы, существующие в моделе
         $valid_fields = [];
         // возвращаемые данные
@@ -1692,7 +1742,7 @@ class ABPTable extends Model
                 }
 
                 // если поле обязательное
-                if ($check_require && !array_key_exists($field["name"], $data)) {
+                if ($check_require && !isset($data[$field["name"]])) {
                     switch ($field["type"]) {
                         case "image":
                         case "file":
@@ -1705,7 +1755,7 @@ class ABPTable extends Model
                             break;
                             // полиморфы
                         case 'morph': {
-                                if (!array_key_exists($field["name"] . "_id", $data) && !array_key_exists($field["name"] . "_type", $data) && $data[$field["name"] . "_type"]) {
+                                if (!isset($data[$field["name"] . "_id"]) && !isset($data[$field["name"] . "_type"]) /*&& $data[$field["name"] . "_type"]*/) {
                                     $errors["require"][] = $field["name"];
                                     $is_error = true;
                                 }
@@ -1873,6 +1923,7 @@ class ABPTable extends Model
                     $res[$valid_field] = $data[$valid_field];
                 }
             }
+            // dd($data);
             // var_dump($res);
             return [
                 "data" => $res,
@@ -1944,6 +1995,24 @@ class ABPTable extends Model
                     }
                     break;
             }
+            // модифицируем модель, если передан преобразователь
+            if ($this->modModel) {
+                foreach ($this->modModel as $modField) {
+                    if (isset($modField["name"])) {
+                        $model_collection = collect($model);
+                        $mod_model = $model_collection->map(function ($item) use ($modField) {
+                            $fieldName = $modField["name"];
+                            if ($item["name"] == $fieldName) {
+                                foreach ($modField as $key => $value) {
+                                    $item[$key] = $value;
+                                }
+                            }
+                            return $item;
+                        });
+                        $model = $mod_model->values()->all();
+                    }
+                }
+            }
             // сортируем поля ввода
             $model_collection = collect($model);
             $sorted_model = $model_collection->sortBy(function ($field) {
@@ -1971,6 +2040,7 @@ class ABPTable extends Model
         $res = [];
         // свойства таблицы
         $props = [
+            "app_model" => get_class($this),
             "table_type" => $this->table_type(),
             "titles" => [
                 "table" => $this->title(),

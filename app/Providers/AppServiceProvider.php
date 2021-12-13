@@ -37,6 +37,8 @@ use App\Triggers\SerialNumMoveObserver;
 use App\File;
 use App\Triggers\FileObserver;
 
+use App\Sotrudnik;
+use App\Triggers\SotrudnikObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -77,5 +79,7 @@ class AppServiceProvider extends ServiceProvider
         SerialNumMove::observe(SerialNumMoveObserver::class);
         // файлы
         File::observe(FileObserver::class);
+        // сотрудники
+        Sotrudnik::observe(SotrudnikObserver::class);
     }
 }

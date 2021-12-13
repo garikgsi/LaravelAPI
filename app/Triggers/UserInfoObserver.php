@@ -26,7 +26,7 @@ class UserInfoObserver
                             $msg = 'Сотрудник ' . $msg;
                         };
                 }
-                abort(422, $msg);
+                abort(421, $msg);
                 return false;
             }
         }
