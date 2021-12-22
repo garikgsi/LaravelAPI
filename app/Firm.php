@@ -139,20 +139,20 @@ class Firm extends ABPTable
         //     'name_ip','father_name_ip','dop_okved']);
 
         $this->model([
-            ["name" => "kpp", "name_1c" => "КПП", "type" => "string", "title" => "КПП", "require" => false, "index" => "index"],
+            ["name" => "kpp", "name_1c" => "КПП", "type" => "string", "title" => "КПП", "require" => false, "index" => "index", "show_in_table" => false],
             ["name" => "inn", "name_1c" => "ИНН", "type" => "string", "title" => "ИНН", "require" => true, "index" => "index"],
-            ["name" => "reg_date", "name_1c" => "ДатаРегистрации", "type" => "date", "title" => "Дата Регистрации", "require" => false, "index" => "index"],
-            ["name" => "rs_id", "name_1c" => "ОсновнойБанковскийСчет", "type" => "select", "table" => "rs", "table_class" => "RS", "title" => "Основной расчетный счет", "require" => false, "default" => 1, "index" => "index"],
-            ["name" => "okpo", "name_1c" => "КодПоОКПО", "type" => "string", "title" => "Код по ОКПО", "require" => false, "index" => "index"],
-            ["name" => "full_name", "name_1c" => "НаименованиеПолное", "type" => "string", "title" => "Полное наименование", "require" => false, "index" => "index"],
-            ["name" => "short_name", "name_1c" => "НаименованиеСокращенное", "type" => "string", "title" => "Сокращенное наименование", "require" => false, "index" => "index"],
+            ["name" => "reg_date", "name_1c" => "ДатаРегистрации", "type" => "date", "title" => "Дата Регистрации", "require" => false, "index" => "index", "show_in_table" => false],
+            ["name" => "rs_id", "name_1c" => "ОсновнойБанковскийСчет", "type" => "select", "table" => "rs", "table_class" => "RS", "title" => "Основной расчетный счет", "require" => false, "default" => 1, "index" => "index", "show_in_table" => false, "show_in_form" => false],
+            ["name" => "okpo", "name_1c" => "КодПоОКПО", "type" => "string", "title" => "Код по ОКПО", "require" => false, "index" => "index", "show_in_table" => false],
+            ["name" => "full_name", "name_1c" => "НаименованиеПолное", "type" => "string", "title" => "Полное наименование", "require" => false, "index" => "index", "show_in_table" => false],
+            ["name" => "short_name", "name_1c" => "НаименованиеСокращенное", "type" => "string", "title" => "Сокращенное наименование", "require" => false, "index" => "index", "show_in_table" => false],
             ["name" => "ogrn", "name_1c" => "ОГРН", "type" => "string", "title" => "ОГРН", "require" => true, "index" => "index"],
             ["name" => "okved", "name_1c" => "КодОКВЭД2", "type" => "string", "title" => "Код ОКВЭД", "require" => false, "index" => "index"],
             ["name" => "okopf", "name_1c" => "КодОКОПФ", "type" => "string", "title" => "Код ОКОПФ", "require" => false, "index" => "index"],
-            ["name" => "firstname_ip", "name_1c" => "ФамилияИП", "type" => "string", "title" => "Фамилия ИП", "require" => false, "index" => "index"],
-            ["name" => "name_ip", "name_1c" => "ИмяИП", "type" => "string", "title" => "Имя ИП", "require" => false, "index" => "index"],
-            ["name" => "father_name_ip", "name_1c" => "ОтчествоИП", "type" => "string", "title" => "Отчество ИП", "require" => false, "index" => "index"],
-            ["name" => "dop_okved", "name_1c" => "ДополнительныеКодыОКВЭД2", "type" => "string", "title" => "Дополнительные коды ОКВЭД", "require" => false, "index" => "index"],
+            ["name" => "firstname_ip", "name_1c" => "ФамилияИП", "type" => "string", "title" => "Фамилия ИП", "require" => false, "index" => "index", "show_in_table" => false],
+            ["name" => "name_ip", "name_1c" => "ИмяИП", "type" => "string", "title" => "Имя ИП", "require" => false, "index" => "index", "show_in_table" => false],
+            ["name" => "father_name_ip", "name_1c" => "ОтчествоИП", "type" => "string", "title" => "Отчество ИП", "require" => false, "index" => "index", "show_in_table" => false],
+            ["name" => "dop_okved", "name_1c" => "ДополнительныеКодыОКВЭД2", "type" => "string", "title" => "Дополнительные коды ОКВЭД", "require" => false, "index" => "index", "show_in_table" => false],
         ]);
 
         $this->sub_tables([

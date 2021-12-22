@@ -70,4 +70,6 @@ Route::group(['prefix' => 'laravel-filemanager', 'middleware' => ['web', 'verifi
 // Route::get('/forms/{table}/{id}', function ($table, $id) {
 //     return view('forms/' . $table . '/main', ["id" => $id]);
 // })->middleware('verified', 'is_admin');
-// Route::get('/forms/{table}/{id}/{view?}', 'FormController@get')->middleware('verified');
+Route::get('/forms/{table}/{id}/{view?}', 'FormController@get')->middleware('verified');
+// форма в html для загрузки (доступна без авторизации по ссылке)
+Route::get('/print/{document_id}', 'FormController@form');

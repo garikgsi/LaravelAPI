@@ -34,13 +34,42 @@ class Pdf
                 '--print-to-pdf=' . $path,
                 'data:text/html,' . rawurlencode($data)
             ]);
-
+            // dd($process);
             // выполняем процесс
             try {
                 $process->mustRun();
                 return $type == 'file' ? File::get($path) : $path;
             } catch (ProcessFailedException $exception) {
-                // dd($exception);
+                dd($exception);
+                return false;
+            }
+        }
+        return false;
+    }
+
+    // генерация pdf ($data - html-контент)
+    public function from_html_form($url, $type = 'file')
+    {
+        if (!is_null($this->binary)) {
+            // путь для сохранения файла
+            $path = tempnam(sys_get_temp_dir(), Str::random());
+            // запускаем конверртер в хроме
+            $process = new Process([
+                $this->binary,
+                '--headless',
+                '--disable-gpu',
+                '--print-to-pdf-no-header',
+                '--user-data-dir=/tmp',
+                '--print-to-pdf=' . $path,
+                $url
+            ]);
+            // dd($process);
+            // выполняем процесс
+            try {
+                $process->mustRun();
+                return $type == 'file' ? File::get($path) : $path;
+            } catch (ProcessFailedException $exception) {
+                dd($exception);
                 return false;
             }
         }

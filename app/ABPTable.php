@@ -421,7 +421,9 @@ class ABPTable extends Model
             $model = $this->withTrashed()->find($this->attributes["id"]);
             switch ($this->table_type) {
                 case "document": {
-                        $title = $model ? "№ " . $model->doc_num . " от " . $model->doc_date : 'Не установлено';
+                        $doc_date = Carbon::createFromFormat('Y-m-d', $model->doc_date);
+                        $format_date = $doc_date ? $doc_date->format('d.m.Y') : $model->doc_date;
+                        $title = $model ? "№ " . $model->doc_num . " от " . $format_date : 'Не установлено';
                     }
                     break;
                 case "sub_table": {
@@ -2037,6 +2039,8 @@ class ABPTable extends Model
     // выдаем расширения таблицы (файлы, картинки и т.п.)
     public function get_extensions()
     {
+        // текущий пользователь
+        $user = Auth::user();
         $res = [];
         // свойства таблицы
         $props = [
@@ -2048,7 +2052,9 @@ class ABPTable extends Model
                 "edit" => "Редактирование записи в " . $this->title(),
                 "copy" => "Копирование записи в " . $this->title(),
             ],
-            "icon" => $this->icon()
+            "icon" => $this->icon(),
+            // печатные формы
+            "printable" => method_exists($this, 'pf_data') && $user->can('viewAny', $this)
         ];
         $res["props"] = $props;
         // стандартные расширения (файлы и т.п.)
@@ -2065,11 +2071,12 @@ class ABPTable extends Model
         }
         $res["sub_tables"] = $sub_tables;
         // права доступа
-        $user = Auth::user();
         $res["permissions"] = [
             "add" => (int)$user->can('create', $this),
             "view" => (int)$user->can('viewAny', $this),
         ];
+
+
         return $res;
     }
 

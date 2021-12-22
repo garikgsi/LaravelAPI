@@ -184,6 +184,7 @@ class APIController extends Controller
         } else {
             // создаем экземпляр модели
             $t = $this->abp_table;
+
             // устанавливаем текущего пользователя
             $user = $this->setUser();
 
@@ -220,10 +221,12 @@ class APIController extends Controller
                         }
                     }
                 }
-                // посчитаем общее кол-во записей перед лимитами
-                $resCount = $data->count();
+                // $resCount = $data->count();
                 // общий метод извлечения данных для отчетов - result
                 $data = $data->result();
+                // посчитаем общее кол-во записей перед лимитами
+                $resCount = count($data);
+
                 // смещение и лимиты
                 $limit = 10;
                 $offset = 0;

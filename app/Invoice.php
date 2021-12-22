@@ -30,4 +30,16 @@ class Invoice extends ABPTable
             ["table" => "invoice_items", "class" => "InvoiceItem", "method" => "items", "title" => "Позиции счета", "item_class" => "App\InvoiceItem", "belongs_method" => "invoice", "keys" => ["foreign" => "invoice_id", "references" => "id", "foreign_table" => "invoice_items", "reference_table" => "invoices"]],
         ]);
     }
+
+    // связи
+    // позиции счета
+    public function items()
+    {
+        return $this->hasMany('App\InvoiceItem');
+    }
+    // заказ
+    public function order_()
+    {
+        return $this->belongsTo('App\Order', 'order_id');
+    }
 }

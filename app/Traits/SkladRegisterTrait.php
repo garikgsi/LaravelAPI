@@ -4,6 +4,7 @@
 namespace App\Traits;
 
 use App\SkladRegister;
+use App\Kontragent;
 
 trait SkladRegisterTrait
 {
@@ -80,7 +81,44 @@ trait SkladRegisterTrait
         $ProductionItemClass = 'App\ProductionItem';
         $ProductionComponentClass = 'App\ProductionComponent';
         $MoveClass = 'App\SkladMoveItem';
+        $ActClass = 'App\ActItem';
+
         // ПОЛУЧАЕМ НЕОБХОДИМЫЕ ПЕРЕМЕННЫЕ ДЛЯ РЕГИСТРА В ЗАВИСИМОСТИ ОТ ДОКУМЕНТА
+        // если это продажа
+        if ($doc_item instanceof $ActClass) {
+            // документ
+            $doc = $doc_item->act;
+            if ($doc) {
+                // признак при котором должны быть регистры $is_active == true
+                $is_active = $doc->is_active == 1 ? true : false;
+                // переменные для регистра и вывода ошибок
+                $sklad_id = $doc->sklad_id;
+                $sklad_title = $doc->sklad;
+                $kolvo = floatVal($doc_item->kolvo);
+                $nomenklatura_id = $doc_item->nomenklatura_id;
+                $doc_date = $doc->doc_date;
+                // организация
+                try {
+                    $firm_id = $doc->order_()->first()->contract_()->first()->firm_()->first()->id;
+                } catch (\Throwable $th) {
+                    $firm_id = 1;
+                }
+                // контрагент
+                try {
+                    $kontragent = $doc->order_()->first()->contract_()->first()->contractable;
+                    if ($kontragent instanceof Kontragent) {
+                        $kontragent_id = $kontragent->id;
+                    }
+                } catch (\Throwable $th) {
+                    $kontragent_id = 1;
+                }
+                $nomenklatura_title = $doc_item->nomenklatura;
+                $ed_ism_title = $doc_item->ed_ism;
+                $price = $doc_item->price;
+                $nds_id = $doc_item->nds_id;
+                $nomenklatura = $doc_item->nomenklatura_()->first();
+            }
+        }
         // если это компоненты произведенных изделий
         if ($doc_item instanceof $ProductionComponentClass) {
             // документ

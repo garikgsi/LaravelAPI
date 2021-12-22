@@ -7,6 +7,8 @@ use App\ABPTable;
 
 class ActItem extends ABPTable
 {
+    // регистры
+    use Traits\SerialNumbersTrait, Traits\SkladRegisterTrait;
 
     public function __construct()
     {

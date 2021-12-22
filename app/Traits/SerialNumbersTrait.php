@@ -55,6 +55,7 @@ trait SerialNumbersTrait
         // типы документов, которые могут порадить списание серийных номеров
         $SkladMoveClass = 'App\SkladMoveItem';
         $ProductionClass = 'App\ProductionComponent';
+        $ActClass = 'App\ActItem';
         //  в зависимости от типа документа будут взяты разные поля
         // перемещение
         if ($this instanceof $SkladMoveClass) {
@@ -68,6 +69,13 @@ trait SerialNumbersTrait
             $p = $this->production;
             $sklad_id = $p->sklad_id;
             $doc_date = $p->doc_date;
+            $nomenklatura_id = $this->nomenklatura_id;
+        }
+        // продажа
+        if ($this instanceof $ActClass) {
+            $a = $this->act;
+            $sklad_id = $a->sklad_id;
+            $doc_date = $a->doc_date;
             $nomenklatura_id = $this->nomenklatura_id;
         }
         // если документ идентифицирован

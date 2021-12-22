@@ -29,6 +29,21 @@ use App\Triggers\ProductionComponentObserver;
 use App\ProductionReplace;
 use App\Triggers\ProductionReplaceObserver;
 
+use App\Contract;
+use App\Triggers\ContractObserver;
+use App\Order;
+use App\Triggers\OrderObserver;
+use App\OrderItem;
+use App\Triggers\OrderItemObserver;
+use App\Invoice;
+use App\Triggers\InvoiceObserver;
+use App\InvoiceItem;
+use App\Triggers\InvoiceItemObserver;
+use App\Act;
+use App\Triggers\ActObserver;
+use App\ActItem;
+use App\Triggers\ActItemObserver;
+
 use App\SerialNum;
 use App\SerialNumMove;
 use App\Triggers\SerialNumObserver;
@@ -81,5 +96,16 @@ class AppServiceProvider extends ServiceProvider
         File::observe(FileObserver::class);
         // сотрудники
         Sotrudnik::observe(SotrudnikObserver::class);
+        // договоры
+        Contract::observe(ContractObserver::class);
+        // заказы
+        Order::observe(OrderObserver::class);
+        OrderItem::observe(OrderItemObserver::class);
+        // счета
+        Invoice::observe(InvoiceObserver::class);
+        InvoiceItem::observe(InvoiceItemObserver::class);
+        // накладные
+        Act::observe(ActObserver::class);
+        ActItem::observe(ActItemObserver::class);
     }
 }
