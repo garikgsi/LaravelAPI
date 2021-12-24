@@ -12,6 +12,7 @@ class ABPResponse
     private $is_err = false;
     private $resp_code = 200;
     private $data = [];
+    private $itogs = [];
     private $model = [];
     private $extensions = [];
     private $count = NULL;
@@ -29,6 +30,7 @@ class ABPResponse
             "is_error" => $this->is_err,
             "error" => $this->error,
             "data" => $this->data,
+            "itogs" => $this->itogs,
             "time_request" => (round(microtime(1) - $this->start_time, 3)) . " sec"
         ];
 
@@ -60,6 +62,11 @@ class ABPResponse
         $this->data = $data;
         if (!is_null($count)) $this->count = $count;
         if (!is_null($code)) $this->resp_code = $code;
+        return $this;
+    }
+    public function set_itogs($itogs)
+    {
+        $this->itogs = $itogs;
         return $this;
     }
 

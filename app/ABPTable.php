@@ -663,7 +663,9 @@ class ABPTable extends Model
     // проверяем, есть ли столбец в БД
     public function has_column($column)
     {
-        return Schema::connection($this->connection)->hasColumn($this->table, $column);
+        $model = collect($this->model());
+        return $model->contains('name', $column);
+        // return Schema::connection($this->connection)->hasColumn($this->table, $column);
     }
 
     // проверяем, есть ли таблица в заданном соединении
@@ -754,65 +756,154 @@ class ABPTable extends Model
             $replaceSourceArray = ["lt", "gt", "eq", "ne", "ge", "le", "like"];
             $replaceTargetArray = ["<", ">", "=", "<>", ">=", "<=", "like"];
             $req["filter"] = urldecode($req["filter"]);
-            if (preg_match_all("/(\w+)\s+(lt|gt|eq|ne|ge|le|like|in|ni)\s+([\[\w\]\,\"\\\]+)(\s+(or|and)\s+)?/iu", $req['filter'], $filterResults, PREG_SET_ORDER)) {
+            if (preg_match_all("/((\w+\.?)+)\s+(lt|gt|eq|ne|ge|le|like|in|ni|morph|morphin|morphni)\s+([\[\w\]\.\,\"\\\]+)(\s+(or|and)\s+)?/iu", $req['filter'], $filterResults, PREG_SET_ORDER)) {
                 $nextExp = "and";
-                // dd($filterResults);
                 foreach ($filterResults as $filterResult) {
-                    $column = trim($filterResult[1]);
-                    if ($this->has_column($column)) {
-                        $exp = str_replace($replaceSourceArray, $replaceTargetArray, strtolower($filterResult[2]));
-                        switch ($exp) {
-                            case 'like': {
-                                    $colValue = '%' . $filterResult[3] . '%';
-                                }
-                                break;
-                            case 'in':
-                            case 'ni': {
-                                    // проверим, не массив ли передан в формате JSON
-                                    $colValue = json_decode($filterResult[3]);
+                    $join_column = trim($filterResult[1]);
+                    $joins = explode('.', $join_column);
+                    if (count($joins) == 1) {
+                        $exp = str_replace($replaceSourceArray, $replaceTargetArray, strtolower($filterResult[3]));
+                        $filterVal = $filterResult[4];
+                        $column = $joins[0];
+                        // dd($column, $exp, $filterVal);
+                        // без связей
+                        if ($this->has_column($column)) {
+                            switch ($exp) {
+                                case 'like': {
+                                        $colValue = '%' . $filterVal . '%';
+                                    }
+                                    break;
+                                case 'in':
+                                case 'ni': {
+                                        // проверим, не массив ли передан в формате JSON
+                                        $colValue = json_decode($filterVal);
 
-                                    if (!is_array($colValue)) {
-                                        $colValue = array($colValue);
-                                    }
-                                }
-                                break;
-                            default: {
-                                    $colValue = $filterResult[3];
-                                }
-                        }
-                        if ($nextExp == 'and') {
-                            switch ($exp) {
-                                case 'in': {
-                                        $data = $data->whereIn($column, $colValue);
-                                    }
-                                    break;
-                                case 'ni': {
-                                        $data = $data->whereNotIn($column, $colValue);
+                                        if (!is_array($colValue)) {
+                                            $colValue = array($colValue);
+                                        }
                                     }
                                     break;
                                 default: {
-                                        $data = $data->where($column, $exp, $colValue);
+                                        $colValue = $filterVal;
                                     }
                             }
+                            if ($nextExp == 'and') {
+                                switch ($exp) {
+                                    case 'morphin':
+                                    case 'morphni':
+                                    case 'morph': {
+                                            $morphFilterValue = explode('.', $filterVal);
+                                            $data->whereHasMorph($column, json_decode($morphFilterValue[0]), function ($query) use ($morphFilterValue, $exp) {
+                                                switch ($exp) {
+                                                    case 'morphin': {
+                                                            $query->whereIn('id', json_decode($morphFilterValue[1]));
+                                                        }
+                                                        break;
+                                                    case 'morphni': {
+                                                            $query->whereNotIn('id', json_decode($morphFilterValue[1]));
+                                                        }
+                                                        break;
+                                                    case 'morph': {
+                                                            $query->where('id', json_decode($morphFilterValue[1])[0]);
+                                                        }
+                                                        break;
+                                                }
+                                            });
+                                            // dd($data->dd());
+                                        }
+                                        break;
+                                    case 'in': {
+                                            $data = $data->whereIn($column, $colValue);
+                                        }
+                                        break;
+                                    case 'ni': {
+                                            $data = $data->whereNotIn($column, $colValue);
+                                        }
+                                        break;
+                                    default: {
+                                            $data = $data->where($column, $exp, $colValue);
+                                        }
+                                }
+                            } else {
+                                switch ($exp) {
+                                    case 'in': {
+                                            $data = $data->orWhereIn($column, $colValue);
+                                        }
+                                        break;
+                                    case 'ni': {
+                                            $data = $data->orWhereNotIn($column, $colValue);
+                                        }
+                                        break;
+                                    default: {
+                                            $data = $data->orWhere($column, $exp, $colValue);
+                                        }
+                                }
+                            }
+
+                            // $data->dd();
+                            if (isset($filterResult[5])) $nextExp = strtolower($filterResult[5]);
                         } else {
-                            switch ($exp) {
-                                case 'in': {
-                                        $data = $data->orWhereIn($column, $colValue);
-                                    }
-                                    break;
-                                case 'ni': {
-                                        $data = $data->orWhereNotIn($column, $colValue);
-                                    }
-                                    break;
-                                default: {
-                                        $data = $data->orWhere($column, $exp, $colValue);
-                                    }
-                            }
+                            // dd('no col ' . $column);
                         }
-                        // $data->dd();
-                        if (isset($filterResult[5])) $nextExp = strtolower($filterResult[5]);
                     } else {
-                        // dd('no col ' . $column);
+                        // dd($exp);
+                        // со связями
+                        $exp = str_replace($replaceSourceArray, $replaceTargetArray, strtolower($filterResult[3]));
+                        $filterVal = $filterResult[4];
+                        // последний параметр - для фильтрации
+                        $last_join = array_pop($joins);
+                        // если последний параметр == группы
+                        if ($last_join == 'groups') {
+                            $joins[] = $last_join;
+                            $last_join = 'tag_id';
+                        }
+                        // блок фильтрации без последнего параметра
+                        $where_has_join = implode('.', $joins);
+                        // фильтруем
+                        $data->where(function ($query) use ($where_has_join, $last_join, $exp, $filterVal) {
+                            $query->whereHas($where_has_join, function ($query) use ($last_join, $exp, $filterVal) {
+                                switch ($exp) {
+                                    case 'morphin':
+                                    case 'morphni':
+                                    case 'morph': {
+                                            $morphFilterValue = explode('.', $filterVal);
+                                            $query->whereHasMorph($last_join, json_decode($morphFilterValue[0]), function ($query) use ($last_join, $morphFilterValue, $exp) {
+                                                switch ($exp) {
+                                                    case 'morphin': {
+                                                            $query->whereIn('id', json_decode($morphFilterValue[1]));
+                                                        }
+                                                        break;
+                                                    case 'morphni': {
+                                                            $query->whereNotIn('id', json_decode($morphFilterValue[1]));
+                                                        }
+                                                        break;
+                                                    case 'morph': {
+                                                            $query->where('id', json_decode($morphFilterValue[1])[0]);
+                                                        }
+                                                        break;
+                                                }
+                                            });
+                                        }
+                                        break;
+                                    case 'in': {
+                                            $query->whereIn($last_join, json_decode($filterVal));
+                                        }
+                                        break;
+                                    case 'ni': {
+                                            $query->whereNotIn($last_join, json_decode($filterVal));
+                                        }
+                                        break;
+                                        // case 'like': {
+                                        //         $query->where($last_join, 'like', '%' . $filterVal . '%');
+                                        //     }
+                                        //     break;
+                                    default: {
+                                            $query->where($last_join, $exp, $filterVal);
+                                        }
+                                }
+                            });
+                        });
+                        // $data->dd();
                     }
                 }
             }
@@ -881,6 +972,21 @@ class ABPTable extends Model
         if ($only_count) {
             return $this->get_count();
         } else {
+            // итоги
+            $itogs = [];
+            $data_collection = collect($data->get());
+            foreach ($this->model() as $field) {
+                $itog_types = ['kolvo', 'money'];
+                $itog_fields = [];
+                if (in_array($field['type'], $itog_types)) {
+                    $itog_fields[] = $field['name'];
+                }
+                if (count($itog_fields) > 0) {
+                    foreach ($itog_fields as $f) {
+                        $itogs[$f] = $data_collection->sum($f);
+                    }
+                }
+            }
             // дефолтные настройки лимитов
             $defLimit = 10;
             // если передано смещение и лимит
@@ -928,7 +1034,10 @@ class ABPTable extends Model
             $this->data = $data;
 
             if ($this->table_type == 'report') {
-                return $data;
+                return [
+                    "data" => $data,
+                    "itogs" => isset($itogs) ? $itogs : null
+                ];
             } else {
 
                 // проеобразуем коллекцию в массив
@@ -956,7 +1065,10 @@ class ABPTable extends Model
                 // });
 
                 // возвращаем массив данных
-                return $collection;
+                return [
+                    "data" => $collection,
+                    "itogs" => isset($itogs) ? $itogs : null
+                ];
             }
         }
     }
@@ -966,7 +1078,7 @@ class ABPTable extends Model
     {
         $res = $this->apply_request_filters($request, [], $id);
         return [
-            "data" => $this->get_count() > 0 ? $res[0] : null,
+            "data" => $this->get_count() > 0 ? $res["data"][0] : null,
             "count" => $this->get_count()
         ];
     }
@@ -975,8 +1087,10 @@ class ABPTable extends Model
     public function get_table_data($request, $only_count = false)
     {
         $data = $this->apply_request_filters($request, [], null, $only_count);
+
         return [
-            "data" => $data,
+            "data" => $data["data"],
+            "itogs" => $data["itogs"],
             "count" => $this->get_count()
         ];
     }
@@ -992,8 +1106,9 @@ class ABPTable extends Model
         }
         $list_arr = array_merge($list_arr, $req_field_arr);
         $replaces = ["fields" => implode(",", $list_arr)];
+        $data = $this->apply_request_filters($request, $replaces);
         return [
-            "data" => $this->apply_request_filters($request, $replaces),
+            "data" => $data["data"],
             "count" => $this->get_count()
         ];
     }

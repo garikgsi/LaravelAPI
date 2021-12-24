@@ -3,7 +3,6 @@
 namespace App;
 
 use App\ABPTable;
-use App\Common\ABPCache;
 
 class SkladMoveItem extends ABPTable
 {

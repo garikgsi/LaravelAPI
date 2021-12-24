@@ -19,6 +19,9 @@ class ActItem extends ABPTable
         $this->has_images(false);
         $this->has_groups(false);
         $this->table_type('sub_table');
+        // учет по серийникам
+        $this->has_sub_series(true);
+
 
         $this->model([
             ["name" => "act_id", "type" => "key", "table" => "acts", "table_class" => "Act", "title" => "Реализация", "require" => false, "default" => 1, "index" => "index", "show_in_table" => false, "show_in_form" => false],
