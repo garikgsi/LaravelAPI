@@ -1,20 +1,14 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400"></a></p>
-
-<p align="center">
-<a href="https://travis-ci.org/laravel/framework"><img src="https://travis-ci.org/laravel/framework.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://poser.pugx.org/laravel/framework/d/total.svg" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://poser.pugx.org/laravel/framework/v/stable.svg" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://poser.pugx.org/laravel/framework/license.svg" alt="License"></a>
-</p>
-
 ## Язык запросов API
 
-<p>GET /api/v1/table*name - вывод 1-й страницы данных (по умолчанию сортируется по столбцу name, 10 строк на странице)</p>
+<p>GET /api/v1/table_name - вывод 1-й страницы данных (по умолчанию сортируется по столбцу name, 10 строк на странице)</p>
 <p>GET /api/vi/table_name/N - вывод всех полуй записи таблицы table_name с id=N</p>
-<p>GET /api/v1/table_name?odata=[full|data|model|list|count] - формат вывода данных data - только данные, model - только модель столбцов таблицы,
-full - данные и модель, list - список в виде массива ['id'=>'N', 'title'=>'template']
+<p>GET /api/v1/table_name?odata=[full|data|model|list|count]<br/> - формат вывода данных:
+<ul>
+<li>data - только данные, </li><li>model - только модель столбцов таблицы,</li>
+<li>full - данные и модель,</li> <li>list - список в виде массива ['id'=>'N', 'title'=>'template']
 (формат вывода list определяется методом listFormat класса ABPTable, в случае неверно
-указанного шаблона будем передавать таблицу целиком), count - только посчитать записи
+указанного шаблона будем передавать таблицу целиком),</li><li>count - только посчитать записи</li>
+</ul>
 </p><p>Параметры фильтрации в запросе GET:<br/>
 &fields=fieldName1,fieldName2,...,fieldNameN - вывод только перечисленных столбцов таблицы<br/>
 &order=id,[desc|asc] - сортировка выдачи: поле,порядок сортировки<br/>
@@ -41,11 +35,11 @@ and => И</p>
 точечной нотации должен содержать массив в любом случае, даже если указан операнд morph и/или единственное значение. Пример:<br/>
 /contracts?filter=contractable morphin ["App\\Kontragent"].[734]</p>
 <p>----</p>
-<p>в качестве fieldName можно указывать связи таблиц,разделенные точками, например, acts?filter=order*.contract*.contract_type_id in [2,5,7]
+<p>в качестве fieldName можно указывать связи таблиц,разделенные точками, например, <br/>acts?filter=order*.contract*.contract_type_id in [2,5,7]<br/>
 в примере из модели соответствующей таблице acts будет выбрана связь order*, далее из модели Order выбирается связь contract*,
 в котором уже ищется поле contract_type_id, которое и фильтруется в соответствии с операндами.
 если необходимо отфильтровать по группам - в качестве последней связи необходимо указывать значение groups, например, следующий пример
-выберет из актов только те, позиции которых содержат заданные группы номенклатур: acts?filter=items.nomenklatura*.groups in [36,2]
+выберет из актов только те, позиции которых содержат заданные группы номенклатур:<br/> acts?filter=items.nomenklatura*.groups in [36,2]<br/>
 здесь сначала вызываеся метод items, получающий позиции накладной, потом применяется связь nomenklatura* из модели ActItem, затем
 номенклатура фильтруется по группам. !Группы применяются к последнему параметру, перед ключевым параметром 'groups'!
 Для фильтрации полиморфных полей необходимо использовать в качестве последнего параметра точечной нотации значение morph-поля, например<br/>
