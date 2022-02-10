@@ -7,55 +7,82 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://poser.pugx.org/laravel/framework/license.svg" alt="License"></a>
 </p>
 
-## About Laravel
+## Язык запросов API
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+GET /api/v1/table*name - вывод 1-й страницы данных (по умолчанию сортируется по столбцу name, 10 строк на странице)
+GET /api/vi/table_name/N - вывод всех полуй записи таблицы table_name с id=N
+GET /api/v1/table_name?odata=[full|data|model|list|count] - формат вывода данных data - только данные, model - только модель столбцов таблицы,
+full - данные и модель, list - список в виде массива ['id'=>'N', 'title'=>'template']
+(формат вывода list определяется методом listFormat класса ABPTable, в случае неверно
+указанного шаблона будем передавать таблицу целиком), count - только посчитать записи
+Параметры фильтрации в запросе GET:
+&fields=fieldName1,fieldName2,...,fieldNameN - вывод только перечисленных столбцов таблицы
+&order=id,[desc|asc] - сортировка выдачи: поле,порядок сортировки
+&filter=fieldName1[lt|gt|eq|ne|ge|le|like]filterValue1 [or|and] fieldName2[lt|gt|eq|ne|ge|le|like]filterValue1 -
+доступные операнды:
+lt => меньше
+gt => больше
+eq => равно
+ne => не равно
+ge => больше или равно
+le => меньше или равно
+like => like
+in => входит в массив (IN)
+ni => не входит в массив (NOT IN)
+morphin => принадлежит массиву и соответствует полиморфной связи
+morphni => принадлежит массиву и соответствует полиморфной связи
+morph => равняется id и соответствует полиморфной связи
+!! к операнду like значение обрамляется %% с обеих сторон
+доступные условия:
+or => ИЛИ
+and => И
+!!невозможно указывать условия, обрамленные в скобки
+!! для полиморфных условий необходимо соблюсти синтаксис filterValue: ["App\\Kontragent"].[734,755,743,327] - второй параметр
+точечной нотации должен содержать массив в любом случае, даже если указан операнд morph и/или единственное значение. Пример:
+/contracts?filter=contractable morphin ["App\\Kontragent"].[734]
+----
+в качестве fieldName можно указывать связи таблиц,разделенные точками, например, acts?filter=order*.contract*.contract_type_id in [2,5,7]
+в примере из модели соответствующей таблице acts будет выбрана связь order*, далее из модели Order выбирается связь contract*,
+в котором уже ищется поле contract_type_id, которое и фильтруется в соответствии с операндами.
+если необходимо отфильтровать по группам - в качестве последней связи необходимо указывать значение groups, например, следующий пример
+выберет из актов только те, позиции которых содержат заданные группы номенклатур: acts?filter=items.nomenklatura*.groups in [36,2]
+здесь сначала вызываеся метод items, получающий позиции накладной, потом применяется связь nomenklatura* из модели ActItem, затем
+номенклатура фильтруется по группам. !Группы применяются к последнему параметру, перед ключевым параметром 'groups'!
+Для фильтрации полиморфных полей необходимо использовать в качестве последнего параметра точечной нотации значение morph-поля, например
+acts?filter=order*.contract\_.contractable morphin ["App\\Kontragent"].[734,755] В результате примера получаем все накладные, которые указаны
+в качестве contractable-поля модели Contract, как контрагенты с id == [734,755]
+----
+&search=text - поиск по всем возможным полям
+&tags=id1,id2,...,idN - дополнительный фильтр по тегам (выбор должен содержать строки имеющий хотя бы 1 тег)
+&extensions=ext1,ext2,...,extN - добавить в ответ расширения для записи из возможных [files,images,groups,file_list,main_image,select_list_title]
+&scope=stock_balance.9, - добавить в запрос scope. Параметры передаются через точки, скопы разделяются запятыми
+&offset - смещение относительно 0-го элемента выдачи, отсортированного согласно правилам сортировки (только совместно с limit)
+&limit - количество выдаваемых значений выдачи (-1 для отсутствия лимитов)
+&trashed=1 - выдавать помеченные на удаление записи
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+POST /api/v1/table_name - добавление записи в таблицу table_name. Ответ при успехе - 201 и вставленная запись в объекте data, в случае ошибки - 500
+PUT|PATCH /api/v1/table_name/N - изменение записи с id=N в таблице table_name. В ответе count сервер вернет кол-во измененных записей
+PATCH /api/v1/table_name/N/post - проводим документ с id=N в таблице table_name. В запросе необходимо передать массив полей для проведения (в моделе должны быть отмечены признаком "post"=>true). В ответе count сервер вернет измененную запись
+DELETE /api/v1/table_name/N - удаление записи с id=N в таблице table_name. В ответе count сервер вернет кол-во удаленных записей или true
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Формат ответа сервера:
+{
+"is_error": false, /_ булево поле наличия ошибки _/
+"error": "", /_ текстовое описание ошибки _/
+"count": 4, /** количество записей в таблице соответствующих запросу \*/
+"data": [], /** массив объектов данных _/
+"time_request": "0.596 sec", /\*\* справочно - время выборки данных _/
+"model": [] /\*_ модель структуры таблицы, если передан параметр odata _/
+}
 
-## Learning Laravel
+Коды ответов сервера:
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains over 1500 video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-## Laravel Sponsors
-
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the Laravel [Patreon page](https://patreon.com/taylorotwell).
-
-### Premium Partners
-
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Cubet Techno Labs](https://cubettech.com)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[Many](https://www.many.co.uk)**
-- **[Webdock, Fast VPS Hosting](https://www.webdock.io/en)**
-- **[DevSquad](https://devsquad.com)**
-- **[OP.GG](https://op.gg)**
-
-## Contributing
-
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+200 OK - самый часто используемый код, свидетельствующий об успехе операции;
+201 CREATED - используется, когда с помощью метода POST создается ресурс;
+202 ACCEPTED - используется, чтобы сообщить, что ресурс принят на сервер (запись обновлена);
+400 BAD REQUEST - используется, когда со стороны клиента допущена ошибка в вводе;
+401 UNAUTHORIZED / 403 FORBIDDEN - используются, если для выполнения операции требуется аутентификация пользователя или системы;
+404 NOT FOUND - используется, если в системе отсутствуют искомые ресурсы;
+422 - переданы неверные данные для внесения изменений в БД или неверная логика (ошибка триггера и т.п.)
+500 INTERNAL SERVER ERROR - это никогда не используется просто так - в таком случае произошла ошибка в системе;
+502 BAD GATEWAY - используется, если сервер получил некорректный ответ от предыдущего сервера.
