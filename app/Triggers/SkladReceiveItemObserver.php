@@ -14,6 +14,13 @@ class SkladReceiveItemObserver
         // проверим регистры накопления
         $res = $sri->mod_register(1);
         if ($res["is_error"]) abort(421, $res["err"]);
+
+        // кол-во серийников
+        $sn_kolvo = $sri->get_sn_count();
+        if ($sn_kolvo > $sri->kolvo) {
+            abort(421, "#SRIO.Для " . $sri->nomenklatura . " указано слишком много серийных номеров (" . $sn_kolvo . " из максимально возможных " . $sri->kolvo . ")");
+            return false;
+        }
     }
 
     public function saved(SkladReceiveItem $sri)
@@ -23,8 +30,16 @@ class SkladReceiveItemObserver
         if ($res["is_error"]) abort(421, $res["err"]);
 
         // обновим серийные номера
-        $sn_res = $sri->update_sn_register();
-        if (!$sn_res) abort(421, '#SRIO. Не удалось обновить базу данных серийных номеров');
+        $res_sn = $sri->mod_sn_register('update_only');
+        // dd($res_sn);
+        if ($res_sn["is_error"]) {
+            abort(421, "#SRIO." . $res_sn["err"]);
+            return false;
+        }
+        // // обновим серийные номера
+        // $sn_res = $sri->update_sn_register();
+        // if (!$sn_res) abort(421, '#SRIO. Не удалось обновить базу данных серийных номеров');
+
     }
 
     // проверки перед удалением

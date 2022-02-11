@@ -319,18 +319,20 @@ class Production extends ABPTable
             $components = $item->components;
             foreach ($components as $component) {
                 if (isset($table_data_arr[$component->nomenklatura_id])) {
-                    $table_data_arr[$component->nomenklatura_id]["kolvo"] += $component->kolvo;
+                    $table_data_arr[$component->nomenklatura_id]["kolvo"] += floatval($component->kolvo);
                 } else {
-                    $table_data_arr[$component->nomenklatura_id] = [
-                        "nomenklatura_id" => $component->nomenklatura_id,
-                        "nomenklatura" => $component->nomenklatura,
-                        "artikul" => $component->component->artikul,
-                        "okei" => $component->component->okei,
-                        "ed_ism" => $component->ed_ism,
-                        "kolvo" => $component->kolvo,
-                        "price" => 0,
-                        "summa" => 0
-                    ];
+                    if ($component->kolvo > 0) {
+                        $table_data_arr[$component->nomenklatura_id] = [
+                            "nomenklatura_id" => $component->nomenklatura_id,
+                            "nomenklatura" => $component->nomenklatura,
+                            "artikul" => $component->component->artikul,
+                            "okei" => $component->component->okei,
+                            "ed_ism" => $component->ed_ism,
+                            "kolvo" => floatval($component->kolvo),
+                            "price" => 0,
+                            "summa" => 0
+                        ];
+                    }
                 }
             }
         }

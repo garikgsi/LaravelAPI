@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Cache;
 
 use App\Nomenklatura;
 use App\EdIsm;
+use App\Valuta;
 
 
 trait Trait1C
@@ -21,6 +22,8 @@ trait Trait1C
 
     // id склада в 1С (в 1с нет учета по складам)
     protected $default_sklad_uuid = 'f40235d3-d84c-11ea-8133-0050569f62a1';
+    // нулевое значение селекта
+    protected $null_value = '00000000-0000-0000-0000-000000000000';
 
     //
 
@@ -156,7 +159,7 @@ trait Trait1C
                                 if ($pf_table) {
                                     $foreign_table = $this->new_table($pf_table);
                                     $db_data[$field_name_db . "_type"] = get_class($foreign_table);
-                                    if ($pf_id == "00000000-0000-0000-0000-000000000000") {
+                                    if ($pf_id == $this->null_value) {
                                         $db_data[$field_name_db . "_id"] = 1;
                                     } else {
                                         if (method_exists($foreign_table, 'id_by_uuid')) {
@@ -185,7 +188,7 @@ trait Trait1C
                             }
                             break;
                         case 'select': {
-                                if ($data_1c->$field_name_1c == "00000000-0000-0000-0000-000000000000") {
+                                if ($data_1c->$field_name_1c == $this->null_value) {
                                     $db_data[$field_name_db] = 1;
                                     // echo "<p>" . $field_name_1c . " is 00000000-0000-0000-0000-000000000000</p>";
                                 } else {
@@ -366,7 +369,7 @@ trait Trait1C
                 }
             }
             // ошибка добавления
-            return '00000000-0000-0000-0000-000000000000';
+            return $this->null_value;
         }
     }
 
@@ -451,7 +454,7 @@ trait Trait1C
                                 }
                             }
                             // неопределенное значение заменим нулями
-                            if (!isset($field_val)) $field_val = '00000000-0000-0000-0000-000000000000';
+                            if (!isset($field_val)) $field_val = $this->null_value;
                             // форматируем значение в зависимости от типа запроса
                             // edit: put || patch, add: post
                             if ($mod_type == 'edit') {
@@ -491,9 +494,72 @@ trait Trait1C
         $ReceiveClass = 'App\SkladReceive';
         $ProductionClass = 'App\Production';
         $NomenklaturaClass = 'App\Nomenklatura';
+        $ActClass = 'App\Act';
         // если это номенклатура
         if ($this instanceof $NomenklaturaClass) {
             $data["ВидНоменклатуры_Key"] = $this->nomenklatura_type_uuid('Материалы', 'f40235d8-d84c-11ea-8133-0050569f62a1');
+        }
+        // если это реализация
+        if ($this instanceof $ActClass) {
+            $order = $this->order_()->first();
+            $contract = $order->contract_()->first();
+            $firm = $contract->firm_()->first();
+            $rs = $contract->rs_()->first();
+            $kontragent = $contract->contractable()->first();
+            $valuta = Valuta::where('code', 643)->first();
+
+            // заменяем данные специфичными значениями
+            if ($mod_type == 'edit') {
+                // склад
+                $data["Склад@odata.bind"] = "Catalog_Склады(guid'" . $this->sklad_uuid() . "')";
+            } else {
+                $data["ВидОперации"] = "Товары";
+                $data["СуммаВключаетНДС"] = false;
+                // склад
+                $data["Склад_Key"] = $this->sklad_uuid();
+                // организация
+                $data["Организация_Key"] = $firm->get_uuid();
+                // контрагент
+                $data["Контрагент_Key"] = $kontragent->get_uuid();
+                // договор контрагента
+                // $data["ДоговорКонтрагента_Key"] = $contract->get_uuid();
+                // валюта
+                $data["ВалютаДокумента_Key"] = $valuta ? $valuta->get_uuid() : $this->null_value;
+                // расчетный счет
+                $data["БанковскийСчетОрганизации_Key"] = $rs->get_uuid();
+                $data["СчетУчетаРасчетовСКонтрагентом_Key"] = $this->ac_uuid("62.01", "86eff6fd-d84c-11ea-8133-0050569f62a1");
+            }
+            // только товары
+            $data["Товары"] = [];
+            // #строки
+            $line_num = 1;
+            // обработаем табличную часть
+            foreach ($this->items as $item) {
+                // номенклатура
+                $n = Nomenklatura::withTrashed()->find($item->nomenklatura_id);
+                // единица измерения
+                $ed_ism = EdIsm::find($n->ed_ism_id)->first();
+                // строка данных накладной
+                $line_data = [
+                    "LineNumber" => $line_num,
+                    "Номенклатура_Key" => $n ? $n->get_uuid(["ВидНоменклатуры_Key" => $this->nomenklatura_type_uuid('Товары', 'f40235d7-d84c-11ea-8133-0050569f62a1')]) : $this->null_value,
+                    "ЕдиницаИзмерения_Key" => $ed_ism->get_uuid(),
+                    "Количество" => floatVal($item->kolvo),
+                    "Цена" => floatVal($item->price),
+                    "Сумма" => floatVal($item->summa),
+                    "СтавкаНДС" => $item->stavka_nds,
+                    "СуммаНДС" => floatVal($item->summa_nds),
+                    "СчетДоходов_Key" => $this->ac_uuid("90.01.1", "86eff7ae-d84c-11ea-8133-0050569f62a1"),
+                    "СчетРасходов_Key" => $this->ac_uuid("90.02.1", "86eff7b1-d84c-11ea-8133-0050569f62a1"),
+                    "СчетУчетаНДСПоРеализации_Key" => $this->ac_uuid("90.03", "86eff7b3-d84c-11ea-8133-0050569f62a1"),
+                    "СчетУчета_Key" => $this->ac_uuid("10.01", "86eff64f-d84c-11ea-8133-0050569f62a1")
+                ];
+                // инкремент № строки
+                $line_num++;
+                // добавляем строку в таблицу
+                $data["Товары"][] = $line_data;
+            }
+            // dd($data);
         }
         // если это поступление
         if ($this instanceof $ReceiveClass) {
@@ -518,7 +584,7 @@ trait Trait1C
                 // номенклатура
                 $n = Nomenklatura::withTrashed()->find($item->nomenklatura_id);
                 $line_data = [
-                    "Номенклатура_Key" => $n ? $n->get_uuid(["ВидНоменклатуры_Key" => $this->nomenklatura_type_uuid('Материалы', 'f40235d8-d84c-11ea-8133-0050569f62a1')]) : '00000000-0000-0000-0000-000000000000',
+                    "Номенклатура_Key" => $n ? $n->get_uuid(["ВидНоменклатуры_Key" => $this->nomenklatura_type_uuid('Материалы', 'f40235d8-d84c-11ea-8133-0050569f62a1')]) : $this->null_value,
                     "Содержание" => $item->nomenklatura,
                     "Количество" => floatVal($item->kolvo),
                     "Цена" => floatVal($item->price),
@@ -617,7 +683,7 @@ trait Trait1C
             }
         }
         // если есть uuid
-        if ($need_sync && $this->uuid && $this->uuid != '00000000-0000-0000-0000-000000000000') {
+        if ($need_sync && $this->uuid && $this->uuid != $this->null_value) {
             $logs[] = "Найден UUID=" . $this->uuid;
             // обновляем
             $mod_type = 'edit';

@@ -64,9 +64,12 @@ class ProductionObserver
 
     public function created(Production $p)
     {
-        // добавим в производство изделия
-        for ($i = 0; $i < $p->kolvo; $i++) {
-            $this->add_item($p);
+        // если это не копирование - добавим автоматом произведенные изделия
+        if ($p->is_copied != 1) {
+            // добавим в производство изделия
+            for ($i = 0; $i < $p->kolvo; $i++) {
+                $this->add_item($p);
+            }
         }
     }
 
@@ -75,44 +78,48 @@ class ProductionObserver
         $this->set_vars($p);
 
         // изменяется количество
-        if ($this->if_change('kolvo')) {
-            // если проведено - сначало надо распровести
-            if ($p->is_active == 1) {
-                abort(421, '#PO.Для изменения рецептуры необходимо сначала распровести производство');
-                return false;
-            } else {
-                // на сколько увеличивается кол-во
-                $delta = intVal($p->kolvo - $p->getOriginal('kolvo'));
-                // если кол-во увеличивается
-                if ($delta > 0) {
-                    for ($i = 0; $i < $delta; $i++) {
-                        $this->add_item($p);
-                    }
-                } else {
-                    abort(421, '#PO.Уменьшение количества готовых изделий в партии невозможно');
+        if ($p->isDirty('kolvo')) {
+            $old_kolvo = intval($p->getOriginal('kolvo'));
+            $new_kolvo = intval($p->kolvo);
+            if ($old_kolvo != $new_kolvo) {
+                // если проведено - сначало надо распровести
+                if ($p->getOriginal('is_active') == 1) {
+                    abort(421, '#PO.Для изменения количества необходимо сначала распровести производство');
                     return false;
+                } else {
+                    // на сколько увеличивается кол-во
+                    $delta = intVal($p->kolvo - $p->getOriginal('kolvo'));
+                    // если кол-во увеличивается
+                    if ($delta > 0) {
+                        for ($i = 0; $i < $delta; $i++) {
+                            $this->add_item($p);
+                        }
+                    } else {
+                        abort(421, '#PO.Уменьшение количества готовых изделий в партии невозможно');
+                        return false;
+                    }
                 }
             }
         }
 
         // изменяется рецептура
-        if ($this->if_change('recipe_id')) {
-            if ($p->is_active == 1) {
+        if ($p->isDirty('recipe_id')) {
+            if ($p->getOriginal('is_active') == 1) {
                 abort(421, '#PO.Для изменения рецептуры необходимо сначала распровести производство');
                 return false;
             }
         }
 
         // изменяется склад
-        if ($this->if_change('sklad_id')) {
-            if ($p->is_active == 1) {
+        if ($p->isDirty('sklad_id')) {
+            if ($p->getOriginal('is_active') == 1) {
                 abort(421, '#PO.Для изменения склада необходимо сначала распровести производство');
                 return false;
             }
         }
 
         // если распроводим документ
-        if ($this->if_set('is_active', 0)) {
+        if ($p->isDirty('is_active') && $p->is_active == 0) {
             $check = $this->check_unactive($p, "Распровести");
             if (!$check["can"]) {
                 abort(421, "#PO." . implode(", ", $check["err"]));
@@ -121,7 +128,7 @@ class ProductionObserver
         }
 
         // если проводим документ
-        if ($this->if_set('is_active', 1)) {
+        if ($p->isDirty('is_active') && $p->is_active == 1) {
             // распроводить по складам могут только кладовщики
             if ($this->is_keeper || $this->is_admin) {
                 // нехватка количества
@@ -145,6 +152,8 @@ class ProductionObserver
                         // пытаемся найти замены для компонента
                         $component_replacements = $component->replaces;
                         // если есть замены на уровне компонента
+                        // var_dump($component_replacements);
+                        // if ($component_replacements->count() > 0) dd($component_replacements);
                         if ($component_replacements) {
                             foreach ($component_replacements as $cr) {
                                 if (!in_array($cr->nomenklatura_to_id, $replacement_ids)) {
@@ -375,9 +384,9 @@ class ProductionObserver
                     $remains_errors = [];
                     foreach ($deficit as $nomenklatura_id => $kolvo) {
                         $n = Nomenklatura::find($nomenklatura_id);
-                        $remains_errors[] = "#PO.Недостаточно " . $n->select_list_title . " в количестве " . $kolvo . " " . $n->edIsm;
+                        $remains_errors[] = $n->select_list_title . " в количестве " . $kolvo . " " . $n->edIsm;
                     }
-                    abort(421, json_encode($remains_errors, JSON_UNESCAPED_UNICODE));
+                    abort(421, "#PO. Недостаточно: " . implode(', ', $remains_errors));
                     return false;
                 }
             } else {
@@ -389,15 +398,21 @@ class ProductionObserver
 
     public function saved(Production $p)
     {
-        $this->set_vars($p);
-
-        // получим список готовых изделий
-        $items = $p->items;
-        foreach ($items as $item) {
-            // если изменяем галочку проведения
-            if ($this->if_set('is_active', 0)) {
-                $item->fill(['is_producted' => 0])->save();
-            } else {
+        // если изменился признак проведения - изменим его у каждого изделия
+        if ($p->isDirty('is_active')) {
+            $items = $p->items;
+            foreach ($items as $item) {
+                if ($p->is_active == 0) {
+                    $item->fill(['is_producted' => 0, 'is_active' => 0])->save();
+                } else {
+                    $item->fill(['is_active' => 1])->save();
+                }
+            }
+        } elseif ($p->isDirty('sklad_id') || $p->isDirty('doc_date') || $p->isDirty('recipe_id') || ($p->isDirty('kolvo') && floatval($p->getOriginal(('kolvo')) != floatval($p->kolvo)))) {
+            // dd($p->getChanges());
+            // если изменились поля, влияющие на регистры - обновим подчиненную таблицу
+            $items = $p->items;
+            foreach ($items as $item) {
                 // просто обновляем готовые изделия
                 $item->touch();
             }

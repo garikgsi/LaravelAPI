@@ -1207,7 +1207,7 @@
   <td class=xl6531808 width=28 style='width:21pt'></td>
   <td colspan=7 class=xl8231808 width=248 style='width:187pt'>Готовые изделия:</td>
   <td colspan=2 class=xl7231808 width=88 style='border-right:1.0pt solid black; width:67pt'>
-    {{$itogs["sum_production"]}}
+    {{$itogs->sum_production}}
   </td>
   <td class=xl6531808 width=5 style='width:4pt'></td>
  </tr>
@@ -1223,7 +1223,7 @@
   <td class=xl6531808 width=28 style='width:21pt'></td>
   <td colspan=7 class=xl8231808 width=248 style='width:187pt'>Материалы:</td>
   <td colspan=2 class=xl7631808 width=88 style='border-right:1.0pt solid black; width:67pt'>
-    {{$itogs["sum_components"]}}
+    {{$itogs->sum_components}}
     </td>
   <td class=xl6531808 width=5 style='width:4pt'></td>
  </tr>
@@ -1260,7 +1260,7 @@
   <td class=xl6531808 width=28 style='width:21pt'></td>
   <td colspan=7 class=xl8231808 width=248 style='width:187pt'>Всего:</td>
   <td colspan=2 class=xl8331808 width=88 style='border-right:1.0pt solid black;width:67pt'>
-    {{$itogs["total"]}}
+    {{$itogs->total}}
     </td>
   <td class=xl6531808 width=5 style='width:4pt'></td>
  </tr>

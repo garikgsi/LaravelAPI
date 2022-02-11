@@ -142,10 +142,14 @@ class SkladMoveObserver
         if ($sm->getOriginal('is_out') == 0 && $sm->is_out == 1) {
             event(new SkladMoveIsOut($sm));
         }
-        // обновим позиции накладной
-        $items = $sm->items;
-        foreach ($items as $item) {
-            $item->touch();
+        // если изменились поля, влияющие на регистры - обновим подчиненную таблицу
+        if ($sm->isDirty('is_active') || $sm->isDirty('doc_date') || $sm->isDirty('firm_id') || $sm->isDirty('sklad_out_id') || $sm->isDirty('sklad_in_id') || $sm->isDirty('is_in') || $sm->isDirty('is_out')) {
+
+            // обновим позиции накладной
+            $items = $sm->items;
+            foreach ($items as $item) {
+                $item->touch();
+            }
         }
     }
 

@@ -219,6 +219,11 @@ class ABPTable extends Model
         }
     }
 
+    // public static function boot()
+    // {
+    //     parent::boot();
+    // }
+
     // общие для всех читатели
     // разрешения
     public function getPermissionsAttribute()
@@ -226,7 +231,7 @@ class ABPTable extends Model
         if (isset($this->attributes['id'])) {
             $user = Auth::user();
             $model = $this->find($this->attributes['id']);
-            if ($model) {
+            if ($model && $user) {
                 return [
                     "show" => (int)$user->can('view', $model),
                     "copy" => (int)$user->can('create', $this),
@@ -660,12 +665,16 @@ class ABPTable extends Model
         }
     }
 
-    // проверяем, есть ли столбец в БД
-    public function has_column($column)
+    // проверяем, есть ли столбец в моделе
+    public function has_model_column($column)
     {
         $model = collect($this->model());
         return $model->contains('name', $column);
-        // return Schema::connection($this->connection)->hasColumn($this->table, $column);
+    }
+    // проверяем, есть ли столбец в БД
+    public function has_column($column)
+    {
+        return Schema::connection($this->connection)->hasColumn($this->table, $column);
     }
 
     // проверяем, есть ли таблица в заданном соединении
@@ -729,22 +738,34 @@ class ABPTable extends Model
         if ($this->table_type == 'report') {
             // сортировка для отчетов
         } else {
+            // сортировка по id
+            $sort_by_id = true;
+            // если передана сортировка
             if (isset($req['order'])) {
                 $req["order"] = urldecode($req["order"]);
                 $orders = explode(',', $req['order']);
                 $order_field = trim($orders[0]);
+                // если сотрировка не передана
                 if (count($orders) > 0 && $this->has_column($order_field)) {
                     if (count($orders) == 1) {
+                        if ($order_field == 'id') $sort_by_id = false;
                         $data = $data->orderBy($order_field, $defaultOrder[1]);
                     } else {
+                        if (in_array('id', $orders)) $sort_by_id = false;
                         $data = $data->orderBy($order_field, $orders[1]);
                     }
                 } else {
+                    if ($defaultOrder[0] == 'id') $sort_by_id = false;
                     $data = $data->orderBy($defaultOrder[0], $defaultOrder[1]);
                 }
                 unset($req['order']);
             } else {
+                if ($defaultOrder[0] == 'id') $sort_by_id = false;
                 $data = $data->orderBy($defaultOrder[0], $defaultOrder[1]);
+            }
+            // если в процессе упорядочивания не была передана сортировка по id - добавим ее последней
+            if ($sort_by_id) {
+                $data = $data->orderByRaw('CAST(id AS UNSIGNED) ASC');
             }
         }
 
@@ -756,8 +777,9 @@ class ABPTable extends Model
             $replaceSourceArray = ["lt", "gt", "eq", "ne", "ge", "le", "like"];
             $replaceTargetArray = ["<", ">", "=", "<>", ">=", "<=", "like"];
             $req["filter"] = urldecode($req["filter"]);
-            if (preg_match_all("/((\w+\.?)+)\s+(lt|gt|eq|ne|ge|le|like|in|ni|morph|morphin|morphni)\s+([\[\w\]\.\,\"\\\]+)(\s+(or|and)\s+)?/iu", $req['filter'], $filterResults, PREG_SET_ORDER)) {
+            if (preg_match_all("/((\w+\.?)+)\s+(lt|gt|eq|ne|ge|le|like|in|ni|morph|morphin|morphni)\s+([\[\w\]\.\,\-\"\\\]+)(\s+(or|and)\s+)?/iu", $req['filter'], $filterResults, PREG_SET_ORDER)) {
                 $nextExp = "and";
+                // dd($filterResults);
                 foreach ($filterResults as $filterResult) {
                     $join_column = trim($filterResult[1]);
                     $joins = explode('.', $join_column);
@@ -767,7 +789,8 @@ class ABPTable extends Model
                         $column = $joins[0];
                         // dd($column, $exp, $filterVal);
                         // без связей
-                        if ($this->has_column($column)) {
+                        if ($this->has_column($column) || $this->has_model_column($column) || ($this->has_groups() && $column == 'groups')) {
+                            // dd($column, $exp, $filterVal);
                             switch ($exp) {
                                 case 'like': {
                                         $colValue = '%' . $filterVal . '%';
@@ -787,64 +810,113 @@ class ABPTable extends Model
                                         $colValue = $filterVal;
                                     }
                             }
-                            if ($nextExp == 'and') {
+                            $method = $nextExp == 'and' ? 'where' : 'orWhere';
+                            // var_dump($method);
+                            $data = $data->{$method}(function ($data) use ($filterVal, $exp, $colValue, $column) {
                                 switch ($exp) {
                                     case 'morphin':
                                     case 'morphni':
                                     case 'morph': {
                                             $morphFilterValue = explode('.', $filterVal);
                                             $data->whereHasMorph($column, json_decode($morphFilterValue[0]), function ($query) use ($morphFilterValue, $exp) {
-                                                switch ($exp) {
-                                                    case 'morphin': {
-                                                            $query->whereIn('id', json_decode($morphFilterValue[1]));
-                                                        }
-                                                        break;
-                                                    case 'morphni': {
-                                                            $query->whereNotIn('id', json_decode($morphFilterValue[1]));
-                                                        }
-                                                        break;
-                                                    case 'morph': {
-                                                            $query->where('id', json_decode($morphFilterValue[1])[0]);
-                                                        }
-                                                        break;
+                                                $fomalizeFilterValue = json_decode($morphFilterValue[1]);
+                                                if (count($fomalizeFilterValue)) {
+                                                    switch ($exp) {
+                                                        case 'morphin': {
+                                                                $query->whereIn('id', $fomalizeFilterValue);
+                                                            }
+                                                            break;
+                                                        case 'morphni': {
+                                                                $query->whereNotIn('id', $fomalizeFilterValue);
+                                                            }
+                                                            break;
+                                                        case 'morph': {
+                                                                $query->where('id', $fomalizeFilterValue[0]);
+                                                            }
+                                                            break;
+                                                    }
                                                 }
                                             });
                                             // dd($data->dd());
                                         }
                                         break;
                                     case 'in': {
-                                            $data = $data->whereIn($column, $colValue);
+                                            // для групп
+                                            if ($column == 'groups') {
+                                                $data = $data->whereHas('groups', function ($query) use ($colValue) {
+                                                    $query->whereIn('tag_id', $colValue);
+                                                });
+                                            } else {
+                                                // для всех остальных полей
+                                                $data = $data->whereIn($column, $colValue);
+                                            }
                                         }
                                         break;
                                     case 'ni': {
-                                            $data = $data->whereNotIn($column, $colValue);
+                                            // для групп
+                                            if ($column == 'groups') {
+                                                $data = $data->whereHas('groups', function ($query) use ($colValue) {
+                                                    $query->whereNotIn('tag_id', $colValue);
+                                                });
+                                            } else {
+                                                // для всех остальных полей
+                                                $data = $data->whereNotIn($column, $colValue);
+                                            }
                                         }
                                         break;
                                     default: {
-                                            $data = $data->where($column, $exp, $colValue);
+                                            // для групп
+                                            if ($column == 'groups') {
+                                                $data = $data->whereHas('groups', function ($query) use ($colValue, $exp) {
+                                                    switch ($exp) {
+                                                        case '=': {
+                                                                $filter = 'where';
+                                                                $expr = '=';
+                                                                $val = is_array($colValue) ? $colValue[0] : $colValue;
+                                                            }
+                                                            break;
+                                                        case '<>': {
+                                                                $filter = 'where';
+                                                                $expr = '<>';
+                                                                $val = is_array($colValue) ? $colValue[0] : $colValue;
+                                                            }
+                                                            break;
+                                                        case 'in': {
+                                                                $filter = 'whereIn';
+                                                                $val = is_array($colValue) ? $colValue : [$colValue];
+                                                            }
+                                                            break;
+                                                        case 'ni': {
+                                                                $filter = 'whereNotIn';
+                                                                $val = is_array($colValue) ? $colValue : [$colValue];
+                                                            }
+                                                            break;
+                                                        default: {
+                                                                $filter = 'whereIn';
+                                                                $val = is_array($colValue) ? $colValue : [$colValue];
+                                                            }
+                                                    }
+                                                    if (isset($expr)) {
+                                                        $query->{$filter}('tag_id', $expr, $val);
+                                                    } else {
+                                                        $query->{$filter}('tag_id', $val);
+                                                    }
+
+                                                    // $query->whereNotIn('tag_id', $exp, $colValue);
+                                                });
+                                            } else {
+                                                // для всех остальных полей
+                                                $data = $data->where($column, $exp, $colValue);
+                                            }
                                         }
                                 }
-                            } else {
-                                switch ($exp) {
-                                    case 'in': {
-                                            $data = $data->orWhereIn($column, $colValue);
-                                        }
-                                        break;
-                                    case 'ni': {
-                                            $data = $data->orWhereNotIn($column, $colValue);
-                                        }
-                                        break;
-                                    default: {
-                                            $data = $data->orWhere($column, $exp, $colValue);
-                                        }
-                                }
-                            }
+                            });
 
                             // $data->dd();
-                            if (isset($filterResult[5])) $nextExp = strtolower($filterResult[5]);
                         } else {
                             // dd('no col ' . $column);
                         }
+                        $nextExp = isset($filterResult[5]) ? trim(strtolower($filterResult[5])) : 'and';
                     } else {
                         // dd($exp);
                         // со связями
@@ -859,28 +931,34 @@ class ABPTable extends Model
                         }
                         // блок фильтрации без последнего параметра
                         $where_has_join = implode('.', $joins);
+                        // метод в зависимости от следующего логического условия выбора
+                        $method = $nextExp == 'and' ? 'where' : 'orWhere';
+                        // dd($method, $nextExp);
                         // фильтруем
-                        $data->where(function ($query) use ($where_has_join, $last_join, $exp, $filterVal) {
+                        $data->{$method}(function ($query) use ($where_has_join, $last_join, $exp, $filterVal) {
                             $query->whereHas($where_has_join, function ($query) use ($last_join, $exp, $filterVal) {
                                 switch ($exp) {
                                     case 'morphin':
                                     case 'morphni':
                                     case 'morph': {
                                             $morphFilterValue = explode('.', $filterVal);
-                                            $query->whereHasMorph($last_join, json_decode($morphFilterValue[0]), function ($query) use ($last_join, $morphFilterValue, $exp) {
-                                                switch ($exp) {
-                                                    case 'morphin': {
-                                                            $query->whereIn('id', json_decode($morphFilterValue[1]));
-                                                        }
-                                                        break;
-                                                    case 'morphni': {
-                                                            $query->whereNotIn('id', json_decode($morphFilterValue[1]));
-                                                        }
-                                                        break;
-                                                    case 'morph': {
-                                                            $query->where('id', json_decode($morphFilterValue[1])[0]);
-                                                        }
-                                                        break;
+                                            $query->whereHasMorph($last_join, json_decode($morphFilterValue[0]), function ($query) use ($morphFilterValue, $exp) {
+                                                $fomalizeFilterValue = json_decode($morphFilterValue[1]);
+                                                if (count($fomalizeFilterValue)) {
+                                                    switch ($exp) {
+                                                        case 'morphin': {
+                                                                $query->whereIn('id', $fomalizeFilterValue);
+                                                            }
+                                                            break;
+                                                        case 'morphni': {
+                                                                $query->whereNotIn('id', $fomalizeFilterValue);
+                                                            }
+                                                            break;
+                                                        case 'morph': {
+                                                                $query->where('id', $fomalizeFilterValue[0]);
+                                                            }
+                                                            break;
+                                                    }
                                                 }
                                             });
                                         }
@@ -903,6 +981,8 @@ class ABPTable extends Model
                                 }
                             });
                         });
+                        $nextExp = isset($filterResult[5]) ? trim(strtolower($filterResult[5])) : 'and';
+
                         // $data->dd();
                     }
                 }
@@ -974,16 +1054,18 @@ class ABPTable extends Model
         } else {
             // итоги
             $itogs = [];
-            $data_collection = collect($data->get());
-            foreach ($this->model() as $field) {
-                $itog_types = ['kolvo', 'money'];
-                $itog_fields = [];
-                if (in_array($field['type'], $itog_types)) {
-                    $itog_fields[] = $field['name'];
-                }
-                if (count($itog_fields) > 0) {
-                    foreach ($itog_fields as $f) {
-                        $itogs[$f] = $data_collection->sum($f);
+            if ($this->table_type != 'catalog') {
+                $data_collection = collect($data->get());
+                foreach ($this->model() as $field) {
+                    $itog_types = ['kolvo', 'money'];
+                    $itog_fields = [];
+                    if (in_array($field['type'], $itog_types)) {
+                        $itog_fields[] = $field['name'];
+                    }
+                    if (count($itog_fields) > 0) {
+                        foreach ($itog_fields as $f) {
+                            $itogs[$f] = $data_collection->sum($f);
+                        }
                     }
                 }
             }
@@ -1296,6 +1378,12 @@ class ABPTable extends Model
             $remove_fields[] = "serial";
             $replace_data += [
                 "is_producted" => 0,
+            ];
+        }
+        $ProductionClass = "App\Production";
+        if ($source instanceof $ProductionClass) {
+            $replace_data += [
+                "is_copied" => 1,
             ];
         }
         // удаляем ненужные столбцы

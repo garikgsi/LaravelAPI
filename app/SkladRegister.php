@@ -55,6 +55,7 @@ class SkladRegister extends ABPTable
         $ost = $this->where('sklad_id', $sklad_id)
             ->where('nomenklatura_id', $nomenklatura_id)
             ->whereDate('ou_date', '<=', $date == 'now' ? date("Y-m-d") : $date)
+            // ->dd();
             ->sum('ou_kolvo');
         // $ost = $this->where('sklad_id',$sklad_id)
         //             ->where('nomenklatura_id',$nomenklatura_id)
@@ -89,6 +90,15 @@ class SkladRegister extends ABPTable
         $nomenklatura_id = Nomenklatura::select('id')->whereHas('groups', function ($query) use ($nomenklatura_groups) {
             $query->whereIn('tag_id', $nomenklatura_groups);
         })->get()->pluck('id')->all();
+        // отфильтруем по указанным айдишникам
+        return $query->whereIn('nomenklatura_id', $nomenklatura_id);
+    }
+    // фильтр по производителю номенклатур
+    public function scopeManufacturer_id($query, $manufacturers)
+    {
+        if (!is_array($manufacturers)) $manufacturers = [$manufacturers];
+        // dd($manufacturers);
+        $nomenklatura_id = Nomenklatura::select('id')->whereIn('manufacturer_id', $manufacturers)->get()->pluck('id')->all();
         // отфильтруем по указанным айдишникам
         return $query->whereIn('nomenklatura_id', $nomenklatura_id);
     }

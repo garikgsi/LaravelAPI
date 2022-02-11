@@ -162,6 +162,8 @@ trait SkladRegisterTrait
                 $nds_id = 1;
                 $nomenklatura = $doc->product();
             }
+            // dd($doc);
+            // dd($nomenklatura, $is_active);
         }
         // если это поступление
         if ($doc_item instanceof $ReceiveClass) {
@@ -219,6 +221,8 @@ trait SkladRegisterTrait
             // услуги не проверяем и не регистрируем
             $is_usluga = $nomenklatura->is_usluga == 1 ? true : false;
             // если не услуга
+            // dd($is_usluga, $in_out, $mode);
+
             if (!$is_usluga) {
                 // только если идентифицирован документ
                 if (isset($doc)) {
@@ -269,6 +273,7 @@ trait SkladRegisterTrait
                                     // проверяем остаток
                                     $ostatok = $this->get_ostatok($e_sklad_id, $e_nomenklatura_id);
                                     // dd($check_kolvo);
+                                    // dd($ostatok, $check_kolvo);
                                     $delta = $ostatok - $check_kolvo;
                                     if ($delta < 0) {
                                         // ошибка - не хватает после изменения
@@ -351,6 +356,7 @@ trait SkladRegisterTrait
                                             "ou_kolvo" => $in_out == 1 ? $kolvo : -$kolvo,
                                             "sklad_id" => $sklad_id
                                         ];
+                                        // dd($register_data);
                                         if (isset($price)) {
                                             $register_data["price"] = $price;
                                             $register_data["summa"] = $price * $kolvo;
@@ -358,6 +364,7 @@ trait SkladRegisterTrait
                                         // если регистр уже существует
                                         // if ($in_out == 1 && $kolvo > 2) dd($register_data);
                                         if ($reg_exist) {
+                                            if ($e_register->ou_date == null) $register_data["ou_date"] = date("Y-m-d");
                                             $res = $e_register->update($register_data);
                                         } else {
                                             $register_data["ou_date"] = date("Y-m-d");
@@ -390,6 +397,8 @@ trait SkladRegisterTrait
                                 }
                                 break;
                         }
+                    } else {
+                        // dd($error);
                     }
                 } else {
                     // документ не получен или не идентифицирован

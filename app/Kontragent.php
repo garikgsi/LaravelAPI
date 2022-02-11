@@ -88,14 +88,14 @@ class Kontragent extends ABPTable
         // $this->fillable(['full_name','type','inn','kpp','okpo','passport','rs_id','ogrn','svid_num','svid_date','reg_date']);
 
         $this->model([
-            ["name" => "full_name", "name_1c" => "НаименованиеПолное", "type" => "string", "title" => "Полное наименование", "require" => false, "index" => "index", "show_in_table" => true, "size" => 4],
-            ["name" => "type", "name_1c" => "ЮридическоеФизическоеЛицо", "type" => "enum", "items" => ["ЮридическоеЛицо", "ФизическоеЛицо"], "title" => "Юридическое или физическое лицо", "require" => true, "index" => "index", "show_in_table" => true, "size" => 12],
+            ["name" => "ogrn", "name_1c" => "РегистрационныйНомер", "type" => "string", "title" => "ОГРН", "require" => false, "index" => "index", "show_in_table" => true],
             ["name" => "inn", "name_1c" => "ИНН", "type" => "string", "title" => "ИНН", "require" => false, "index" => "index", "show_in_table" => true],
             ["name" => "kpp", "name_1c" => "КПП", "type" => "string", "title" => "КПП", "require" => false, "index" => "index", "show_in_table" => true],
+            ["name" => "full_name", "name_1c" => "НаименованиеПолное", "type" => "string", "title" => "Полное наименование", "require" => false, "index" => "index", "show_in_table" => true, "size" => 4],
+            ["name" => "type", "name_1c" => "ЮридическоеФизическоеЛицо", "type" => "enum", "items" => ["ЮридическоеЛицо", "ФизическоеЛицо"], "title" => "", "require" => true, "index" => "index", "show_in_table" => true, "size" => 4],
             ["name" => "okpo", "name_1c" => "КодПоОКПО", "type" => "string", "title" => "Код по ОКПО", "require" => false, "index" => "index"],
             ["name" => "passport", "name_1c" => "ДокументУдостоверяющийЛичность", "type" => "string", "title" => "Документ удостоверяющий личность", "require" => false, "index" => "index", "show_in_form" => false],
             ["name" => "rs_id", "name_1c" => "ОсновнойБанковскийСчет_Key", "type" => "select", "table" => "rs", "table_class" => "RS", "title" => "Основной расчетный счет", "require" => false, "default" => 1, "index" => "index", "show_in_table" => false, "show_in_form" => false],
-            ["name" => "ogrn", "name_1c" => "РегистрационныйНомер", "type" => "string", "title" => "ОГРН", "require" => false, "index" => "index", "show_in_table" => true],
             ["name" => "svid_num", "name_1c" => "СвидетельствоСерияНомер", "type" => "string", "title" => "Свидетельство серия и номер", "require" => false, "index" => "index", "show_in_form" => false],
             ["name" => "svid_date", "name_1c" => "СвидетельствоДатаВыдачи", "type" => "date", "title" => "Дата выдачи свидетельства", "require" => false, "default" => "0000-00-00", "index" => "index", "show_in_form" => false],
             ["name" => "reg_date", "name_1c" => "ДатаРегистрации", "type" => "date", "title" => "Дата регистрации", "require" => false, "default" => "0000-00-00", "index" => "index", "show_in_form" => false],

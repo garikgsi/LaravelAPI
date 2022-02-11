@@ -105,13 +105,14 @@ class SerialNumMoveObserver
     protected function update_registers(SerialNumMove $snm)
     {
         // строка документа к которому привязан серийник
-        $doc = $snm->sn_movable()->first();
+        $doc = $snm->sn_movable;
         // типы документов, которые могут порадить создание серийных номеров
         $ReceiveClass = 'App\SkladReceiveItem';
         $ProductionItemClass = 'App\ProductionItem';
         // типы документов, которые могут порадить списание серийных номеров
         $ProductionComponentClass = 'App\ProductionComponent';
         $MoveClass = 'App\SkladMoveItem';
+        $ActClass = 'App\ActItem';
         // документ проведен
         $is_active = 0;
         //  в зависимости от типа документа будут взяты разные поля
@@ -151,6 +152,18 @@ class SerialNumMoveObserver
             ]];
             $is_active = $doc->production_item->is_producted;
         }
+        // продажа
+        if ($doc instanceof $ActClass) {
+            $act = $doc->act;
+            $doc_data = [[
+                "doc_date" => $act->doc_date,
+                "nomenklatura_id" => $doc->nomenklatura_id,
+                "sklad_id" => $act->sklad_id,
+                "in_out" => 0,
+                "kolvo" => -1
+            ]];
+            $is_active = $act->is_active;
+        }
         // перемещение
         if ($doc instanceof $MoveClass) {
             $sm = $doc->sklad_move;
@@ -183,6 +196,7 @@ class SerialNumMoveObserver
             "ou_date" => date('Y-m-d'),
             "serial_id" => $snm->serial_num_id,
         ];
+        // dd($doc_data);
         // если документ найден
         if (isset($doc_data)) {
             // если документ проведен
@@ -199,7 +213,7 @@ class SerialNumMoveObserver
                             $existed_kolvo = $this->sn_kolvo_exists($snm->serial_num_id, $ddata['sklad_id']);
                             // если есть серийник
                             if ($existed_kolvo < abs($ddata['kolvo'])) {
-                                abort(421, $snm->nomenklatura . ' с серийным № ' . $snm->number . ' нет на складе');
+                                abort(421, "#SNMO. " . $snm->nomenklatura . ' с серийным № ' . $snm->number . ' нет на складе');
                                 return false;
                             }
                         }
@@ -216,7 +230,7 @@ class SerialNumMoveObserver
                         $reg = $snm->sn_register()->save($sn_register_item);
                     }
                     if (!$reg) {
-                        abort(421, 'Серийный.№ ' . $snm->number . ' не добавлен в регистр');
+                        abort(421, '#SNMO. Серийный.№ ' . $snm->number . ' не добавлен в регистр');
                         return false;
                     }
                 }
@@ -226,14 +240,14 @@ class SerialNumMoveObserver
                 if ($check_delete["can"]) {
                     $this->delete_registers($snm);
                 } else {
-                    $err = "#1: " . $snm->nomenklatura . " с серийным.№ " . $snm->number . " невозможно удалить из регистра, т.к. он указан в следующих документах: ";
+                    $err = "#SNMO. " . $snm->nomenklatura . " с серийным.№ " . $snm->number . " невозможно удалить из регистра, т.к. он указан в следующих документах: ";
                     $err .= implode(", ", $check_delete["err"]);
                     abort(421, $err);
                     return false;
                 }
             }
         } else {
-            abort(421, 'Не удалось идентифицировать документ для внесения серийного.№ ' . $sn->number . ' в регистр');
+            abort(421, '#SNMO. Не удалось идентифицировать документ для внесения серийного.№ ' . $snm->number . ' в регистр');
             return false;
         }
     }

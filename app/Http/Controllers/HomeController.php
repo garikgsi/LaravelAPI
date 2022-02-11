@@ -14,6 +14,7 @@ use App\File;
 use App\Common\ABPStorage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Act;
 
 
 class HomeController extends Controller
@@ -41,7 +42,8 @@ class HomeController extends Controller
 
         // dd($n->get()->toArray());
 
-
+        // $acts = Act::where('is_active', 1)->first();
+        // dd($acts->export_to_1c());
 
 
         $user = Auth::user();

@@ -17,6 +17,7 @@ use App\Common\ABPStorage;
 use Exception;
 use Illuminate\Support\Facades\Log;
 
+
 use App\File;
 use App\FileDriver;
 use App\FileType;
@@ -31,7 +32,7 @@ use App\SkladReceiveItem;
 set_time_limit(0);
 
 // ЯЗЫК ЗАПРОСОВ К API
-//
+
 // GET /api/v1/table_name - вывод 1-й страницы данных (по умолчанию сортируется по столбцу name, 10 строк на странице)
 // GET /api/vi/table_name/N - вывод всех полуй записи таблицы table_name с id=N
 // GET /api/v1/table_name?odata=[full|data|model|list|count] - формат вывода данных data - только данные, model - только модель столбцов таблицы,
@@ -82,7 +83,7 @@ set_time_limit(0);
 //         &offset - смещение относительно 0-го элемента выдачи, отсортированного согласно правилам сортировки (только совместно с limit)
 //         &limit - количество выдаваемых значений выдачи (-1 для отсутствия лимитов)
 //         &trashed=1 - выдавать помеченные на удаление записи
-//
+
 // POST /api/v1/table_name - добавление записи в таблицу table_name. Ответ при успехе - 201 и вставленная запись в объекте data, в случае ошибки - 500
 // PUT|PATCH /api/v1/table_name/N - изменение записи с id=N в таблице table_name. В ответе count сервер вернет кол-во измененных записей
 // PATCH /api/v1/table_name/N/post - проводим документ с id=N в таблице table_name. В запросе необходимо передать массив полей для проведения (в моделе должны быть отмечены признаком "post"=>true). В ответе count сервер вернет измененную запись
@@ -218,9 +219,11 @@ class APIController extends Controller
                     // строка фильтрации
                     $filters_string = urldecode($request->filter);
                     if (preg_match_all("/(\w+)\s+(lt|gt|eq|ne|ge|le|like|in)\s+([\[\w\-\]\,\"]+)(\s+(or|and)\s+)?/iu", $filters_string, $filters, PREG_SET_ORDER)) {
+                        // dd($filters);
                         foreach ($filters as $filter) {
                             // столбец фильтрации
                             $column = trim($filter[1]);
+                            // dd($column);
                             // операнд
                             $exp = str_replace($replaceSourceArray, $replaceTargetArray, strtolower($filter[2]));
                             // значение фильтра
@@ -516,6 +519,7 @@ class APIController extends Controller
                         // dd($request->all());
                         $data = $this_model->formalize_data_from_request($request, ['id' => $id], 'edit');
                         try {
+                            // DB::connection($t->connection())->enableQueryLog();
                             $res = DB::connection($t->connection())->transaction(function () use ($this_model, $request, $data) {
                                 $save_result = $this_model->save_recursive($request, $data, 'edit');
                                 return $save_result;
@@ -525,6 +529,7 @@ class APIController extends Controller
                                 //     return $save_result;
                                 // }
                             });
+                            // dd(DB::connection($t->connection())->getQueryLog());
                         } catch (Exception $e) {
                             return $this->response->exception($e)->response();
                         }
@@ -719,7 +724,7 @@ class APIController extends Controller
                     // если есть права на изменение записи (добавление группы - это изменение записи)
                     if ($user->can('update', $data)) {
                         if ($request->has("data")) {
-                            $req_data = json_decode($request->input('data'), true);
+                            $req_data = is_array($request->input('data')) ? $request->input('data') : json_decode($request->input('data'), true);
                             // получим все id групп для записи
                             $beginning_id = $data->groups()->pluck('tag_id')->toArray();
                             // если переданы значения
@@ -1240,6 +1245,7 @@ class APIController extends Controller
                                         return $this->response->set_data($data, count($data), 201)->response();
                                     }
                                 } catch (Exception $e) {
+                                    // dd($e);
                                     return $this->response->exception($e)->response();
                                 }
                             } else {

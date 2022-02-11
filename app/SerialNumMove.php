@@ -70,6 +70,7 @@ class SerialNumMove extends ABPTable
         $ProductionItemClass = 'App\ProductionItem';
         $ProductionComponentClass = 'App\ProductionComponent';
         $MoveClass = 'App\SkladMoveItem';
+        $ActClass = 'App\ActItem';
         // поступление
         if ($this->sn_movable instanceof $ReceiveClass) {
             return $this->sn_movable->sklad_receive->select_list_title;
@@ -85,6 +86,10 @@ class SerialNumMove extends ABPTable
         // перемещение
         if ($this->sn_movable instanceof $MoveClass) {
             return $this->sn_movable->sklad_move->select_list_title;
+        }
+        // реализация
+        if ($this->sn_movable instanceof $ActClass) {
+            return $this->sn_movable->act->select_list_title;
         }
         return '';
     }

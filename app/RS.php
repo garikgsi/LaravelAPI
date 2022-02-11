@@ -63,11 +63,50 @@ class RS extends ABPTable
             ["name" => "valuta_id", "name_1c" => "ВалютаДенежныхСредств_Key", "type" => "select", "table" => "valuta", "table_class" => "Valuta", "title" => "Валюта счета", "require" => true, "default" => 1, "index" => "index"],
             ["name" => "rs_table", "name_1c" => ["Owner_Type", "Owner"], "title" => "Владелец счета", "type" => "morph", "tables" => [["table" => "firms", "title" => "Организация", "type" => "App\\Firm"], ["table" => "kontragents", "title" => "Контрагент", "type" => "App\\Kontragent"], ["table" => "fizlica", "title" => "Физ.лицо", "type" => "App\\FizLico"]], "require" => true, "out_index" => 0],
         ]);
+
+        // добавляем читателей
+        $this->appends = array_merge($this->appends, ['bank', 'bik', 'ks', 'valuta']);
     }
 
     // владелец расчетного счета
     public function rs_table()
     {
         return $this->morphTo();
+    }
+    // банк
+    public function bank_()
+    {
+        return $this->belongsTo('App\Bank', 'bank_id');
+    }
+    // Валюта
+    public function valuta_()
+    {
+        return $this->belongsTo('App\Valuta', 'valuta_id');
+    }
+
+    // читатели
+    // Наименование банка
+    public function getBankAttribute()
+    {
+        $bank = $this->bank_()->first();
+        return $bank ? $bank->name . ' ' . $bank->city : '';
+    }
+    // БИК банка
+    public function getBikAttribute()
+    {
+        $bank = $this->bank_()->first();
+        return $bank ? $bank->bik : '';
+    }
+    // Кор.счет банка
+    public function getKsAttribute()
+    {
+        $bank = $this->bank_()->first();
+        return $bank ? $bank->ks : '';
+    }
+    // Валюта счета
+    public function getValutaAttribute()
+    {
+        $valuta = $this->valuta_()->first();
+        return $valuta ? $valuta->getSelectListTitleAttribute() : '';
     }
 }

@@ -70,13 +70,16 @@ class SkladReceiveObserver
 
     public function saved(SkladReceive $sr)
     {
-        // обновим позиции накладной (логика отрабатывает по сохранению позиций накладной)
-        $items = $sr->items;
-        foreach ($items as $item) {
-            $res = $item->touch();
-            if (!$res) {
-                abort(421, '#SRO. Запись накладной ' . $item->id . ' не удалось сохранить');
-                return false;
+        // если изменились поля, влияющие на регистры - обновим подчиненную таблицу
+        if ($sr->isDirty('is_active') || $sr->isDirty('doc_date') || $sr->isDirty('firm_id') || $sr->isDirty('sklad_id') || $sr->isDirty('kontragent_id')) {
+            // обновим позиции накладной (логика отрабатывает по сохранению позиций накладной)
+            $items = $sr->items;
+            foreach ($items as $item) {
+                $res = $item->touch();
+                if (!$res) {
+                    abort(421, '#SRO. Запись накладной ' . $item->id . ' не удалось сохранить');
+                    return false;
+                }
             }
         }
     }

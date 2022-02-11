@@ -48,11 +48,11 @@ class ProductionItemObserver
         // присвоим серийный номер
         $new_serial = 1;
         $last_serial = ProductionItem::whereNotNull('serial')->latest()->first();
-        // серийник - id номенклатуры + 10 последних цифр дополненных нулями
+        // серийник - id номенклатуры + 5 последних цифр дополненных нулями
         if ($last_serial) {
-            $new_serial = intVal(substr($last_serial->serial, -8)) + 1;
+            $new_serial = intVal(substr($last_serial->serial, -5)) + 1;
         }
-        $pi->serial = 'M' . str_pad($new_serial, 8, "0", STR_PAD_LEFT);
+        $pi->serial = 'M' . str_pad($new_serial, 5, "0", STR_PAD_LEFT);
         // if ($this->nomenklatura)
         //     $pi->serial = $this->nomenklatura->id . str_pad($new_serial, 10, "0", STR_PAD_LEFT);
     }
@@ -119,10 +119,13 @@ class ProductionItemObserver
                 return false;
             }
 
-            // обновим все компоненты изделия
-            $components = $pi->components;
-            foreach ($components as $component) {
-                $component->touch();
+            // если изменились поля, влияющие на регистры - обновим подчиненную таблицу
+            if ($pi->isDirty('is_active') || $pi->isDirty('production_id')) {
+                // обновим все компоненты изделия
+                $components = $pi->components;
+                foreach ($components as $component) {
+                    $component->touch();
+                }
             }
         }
     }

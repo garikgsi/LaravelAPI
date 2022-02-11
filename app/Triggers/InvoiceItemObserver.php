@@ -16,6 +16,11 @@ class InvoiceItemObserver
                 $ii->summa_nds = $nds->stavka * $ii->summa;
             }
         }
+        // обновим наименование
+        $nomenklatura = $ii->nomenklatura_()->first();
+        if ($nomenklatura) {
+            $ii->nomenklatura_name = $nomenklatura->doc_title;
+        }
     }
 
     public function saved(InvoiceItem $ii)

@@ -72,7 +72,7 @@ class Nomenklatura extends ABPTable
     //     }
 
     // количество поставок при расчете средней цены
-    protected $avg_limit_receives = 10;
+    protected $avg_limit_receives = 3;
 
     public function __construct()
     {
@@ -87,7 +87,7 @@ class Nomenklatura extends ABPTable
         $this->has_groups(true);
 
         // добавляем читателей
-        $this->appends = array_merge($this->appends, ['manufacturer', 'ed_ism', 'okei', 'doc_type', 'ostatok', 'avg_price']);
+        $this->appends = array_merge($this->appends, ['doc_title', 'manufacturer', 'ed_ism', 'okei', 'doc_type', 'ostatok', 'avg_price', 'price_with_nds']);
         // преобразователи типов
         $this->casts = array_merge([
             $this->casts, [
@@ -107,10 +107,12 @@ class Nomenklatura extends ABPTable
             ["name" => "part_num", "type" => "string", "title" => "Part №", "require" => false, "index" => "index"],
             ["name" => "manufacturer_id", "type" => "select", "table" => "manufacturers", "table_class" => "Manufacturer", "title" => "Производитель", "require" => false, 'default' => 1, "index" => "index"],
             ["name" => "artikul", "name_1c" => "Артикул", "type" => "string", "title" => "Артикул", "require" => false, "index" => "index"],
+            ["name" => "price", "type" => "money", "title" => "Цена без НДС", "require" => true, "index" => "index", "show_in_table" => false, "out_index" => 2, "show_in_form" => true],
             ["name" => "nds_id", "type" => "select", "table" => "nds", "table_class" => "NDS", "title" => "Ставка НДС", "require" => false, 'default' => 1, "index" => "index"],
             ["name" => "is_usluga", "name_1c" => "Услуга", "type" => "boolean", "title" => "Услуга", "require" => false, 'default' => false, "index" => "index"],
             ["name" => "ostatok", "type" => "kolvo", "title" => "Остаток", "virtual" => true, "show_in_table" => true, "show_in_form" => false],
             ["name" => "avg_price", "type" => "money", "title" => "Средняя цена", "virtual" => true, "show_in_table" => true, "show_in_form" => false],
+            ["name" => "price_with_nds", "type" => "money", "title" => "Цена прайс с НДС", "virtual" => true, "show_in_table" => true, "show_in_form" => false],
         ]);
 
         $this->sub_tables([
@@ -128,6 +130,25 @@ class Nomenklatura extends ABPTable
     public function getAvgPriceAttribute()
     {
         return floatval($this->sklad_register()->where('price', '>', 0)->orderBy('doc_date', 'desc')->take($this->avg_limit_receives)->avg('price'));
+    }
+    // цена прайсовая
+    public function getPriceWithNdsAttribute()
+    {
+        // вычислим цену без ндс
+        $this_price = floatval($this->price);
+        if ($this_price) {
+            $price_wo_nds = $this_price;
+        } else {
+            $price_wo_nds = $this->avg_price * 2;
+        }
+        // добавим ндс
+        $nds = $this->nds;
+        if ($nds) {
+            $price_with_nds = $price_wo_nds * (1 + $nds->stavka);
+        } else {
+            $price_with_nds = $price_wo_nds;
+        }
+        return round($price_with_nds, 2);
     }
 
     // выдаем наименование производителя
@@ -173,16 +194,23 @@ class Nomenklatura extends ABPTable
     // выдаем строку для селекта
     public function getSelectListTitleAttribute()
     {
-        $id = $this->attributes["id"];
-        $model = $this->withTrashed()->find($this->attributes["id"]);
+        $title = $this->doc_title;
+        $title .= $this->ostatok > 0 ? ' (остаток ' . $this->ostatok . ' ' . $this->ed_ism . ')' : ' (нет в наличии)';
+        ABPCache::put_select_list($this->table, $this->attributes["id"], $title);
+        return $title;
+    }
+    // выдаем наименование для документов
+    public function getDocTitleAttribute()
+    {
+        // $id = $this->attributes["id"];
+        // $model = $this->withTrashed()->find($this->attributes["id"]);
         $title = "";
         $fields = ["name", "artikul", "description", "part_num"];
-        $m = $model;
+        // $m = $model;
         foreach ($fields as $field) {
-            if (isset($m->attributes[$field]) && $m->attributes[$field]) $title .= $m->attributes[$field] . " ";
+            if (isset($this->attributes[$field]) && $this->attributes[$field]) $title .= $this->attributes[$field] . " ";
         }
         $title = trim($title);
-        ABPCache::put_select_list($this->table, $this->attributes["id"], $title);
         return $title;
     }
 

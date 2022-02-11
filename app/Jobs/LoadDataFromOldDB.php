@@ -692,6 +692,7 @@ class LoadDataFromOldDB implements ShouldQueue
                     ->leftJoin('nomenklatura', '_sklad_receive_items.NomenklaturaID', '=', 'nomenklatura.id')
                     ->where('_sklad_receive_items.IsSostav', $receive["IsSostav"])->where('_sklad_receive_items.IsManufactured', $receive["IsManufactured"])
                     ->where('_sklad_remains.SkladID', $sklad_id)
+                    ->whereDate('_sklad_remains.Data', '<', '2022-01-01')
                     ->select('sklad.name', '_sklad_remains.SkladID', '_sklad_receive_items.NomenklaturaID', 'nomenklatura.Name', '_sklad_remains.Kolvo', '_sklad_receive_items.UnitPrice');
 
                 // если есть остатки

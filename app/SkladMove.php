@@ -22,14 +22,20 @@ class SkladMove extends ABPTable
             ["name" => "firm_id", "type" => "select", "table" => "firms", "table_class" => "Firm", "title" => "Организация", "require" => true, "default" => 1, "index" => "index", "show_in_table" => true, "out_index" => 6],
             ["name" => "sklad_out_id", "type" => "select", "table" => "sklads", "table_class" => "Sklad", "title" => "Склад отправления", "default" => 1, "index" => "index", "require" => true, "show_in_table" => true, "show_in_form" => true, "out_index" => 3],
             ["name" => "sklad_in_id", "name_1c" => "Склад", "type" => "select", "table" => "sklads", "table_class" => "Sklad", "title" => "Склад поступления", "default" => 1, "index" => "index", "require" => true, "show_in_table" => true, "show_in_form" => true, "out_index" => 4],
-            ["name" => "is_out", "type" => "boolean", "title" => "Отправлен со склада отправления", "require" => false, 'default' => false, "index" => "index", "readonly" => true, "show_in_form" => true, "post" => true],
-            ["name" => "is_in", "type" => "boolean", "title" => "Получен на складе получения", "require" => false, 'default' => false, "index" => "index", "readonly" => true, "show_in_form" => true, "post" => true],
+            ["name" => "is_out", "type" => "boolean", "title" => "Отправлен", "require" => false, 'default' => false, "index" => "index", "readonly" => true, "show_in_form" => true, "post" => true],
+            ["name" => "is_in", "type" => "boolean", "title" => "Получен", "require" => false, 'default' => false, "index" => "index", "readonly" => true, "show_in_form" => true, "post" => true],
             // правильная полиморфная запись для визуализации
-            ["name" => "transitable", "title" => "Через кого", "type" => "morph", "tables" => [["table" => "sotrudniks", "title" => "Сотрудника", "type" => "App\\Sotrudnik"], ["table" => "shipping_companies", "title" => "Транспортную компанию", "type" => "App\\ShippingCompany"]], "require" => true, "out_index" => 5],
+            ["name" => "transitable", "title" => "Через кого", "type" => "morph", "tables" => [["table" => "sotrudniks", "title" => "Сотрудника", "type" => "App\\Sotrudnik"], ["table" => "shipping_companies", "title" => "Транспортную компанию", "type" => "App\\ShippingCompany"]], "require" => true, "out_index" => 5, "show_in_table" => false],
+            ["name" => "transitable_title", "type" => "string", "virtual" => true, "title" => "Через кого", "show_in_table" => true, "show_in_form" => false],
+
+            // фильтры
+            ["name" => "items.nomenklatura_.groups", "type" => "groups", "table" => "nomenklatura", "filter" => true, "virtual" => true, "title" => "Контрагент", "show_in_table" => false, "show_in_form" => false],
+            ["name" => "items.nomenklatura_id", "type" => "select", "table" => "nomenklatura", "filter" => true, "virtual" => true, "title" => "Номенклатура", "show_in_table" => false, "show_in_form" => false],
+
         ]);
 
         // добавляем читателей
-        $this->appends = array_merge($this->appends, ['transitable_title', 'sklad_in', 'sklad_out']);
+        $this->appends = array_merge($this->appends, ['transitable_title', 'sklad_in', 'sklad_out', 'firm']);
     }
 
     // строки перемещения
@@ -41,6 +47,11 @@ class SkladMove extends ABPTable
     public function sklad_out_()
     {
         return $this->belongsTo('App\Sklad', 'sklad_out_id');
+    }
+    // организация
+    public function firm_()
+    {
+        return $this->belongsTo('App\Firm', 'firm_id');
     }
     // склад получения
     public function sklad_in_()
@@ -85,5 +96,10 @@ class SkladMove extends ABPTable
     public function getSkladInAttribute()
     {
         return $this->sklad_in_()->first()->getSelectListTitleAttribute();
+    }
+    // организация
+    public function getFirmAttribute()
+    {
+        return $this->firm_()->first()->getSelectListTitleAttribute();
     }
 }

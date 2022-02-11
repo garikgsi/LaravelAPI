@@ -284,12 +284,12 @@ class Act extends ABPTable
         parent::__construct();
 
         $this->table('acts');
+        $this->name_1c('Document_РеализацияТоваровУслуг');
         $this->has_files(true);
         $this->has_images(false);
         $this->has_groups(false);
         $this->table_type('document');
         $this->icon('mdi-human-dolly');
-
 
         // модель
         $this->model([
@@ -297,7 +297,7 @@ class Act extends ABPTable
             ["name" => "sklad_id", "type" => "select", "table" => "sklads", "table_class" => "Sklad", "title" => "Склад", "require" => true, "default" => 1, "index" => "index", "show_in_table" => true, "out_index" => 3],
             ["name" => "period_start_date", "type" => "date", "title" => "Дата начала периода", "require" => false, "index" => "index", "default" => date("Y-m-d"), "show_in_table" => false, "show_in_form" => false],
             ["name" => "period_end_date", "type" => "date", "title" => "Дата окончания периода", "require" => false, "index" => "index", "default" => date("Y-12-31"), "show_in_table" => false, "show_in_form" => false],
-            ["name" => "summa", "type" => "money", "title" => "Сумма", "require" => false, "default" => 0, "index" => "index", "show_in_table" => false, "show_in_form" => false, "readonly" => true],
+            ["name" => "summa", "1c_name" => "СуммаДокумента", "type" => "money", "title" => "Сумма", "require" => false, "default" => 0, "index" => "index", "show_in_table" => false, "show_in_form" => false, "readonly" => true],
             ["name" => "summa_nds", "type" => "money", "title" => "Сумма НДС", "require" => false, 'default' => 0, "index" => "index", "show_in_table" => false, "show_in_form" => false],
             // виртуальные столбцы
             ["name" => "kontragent", "type" => "string", "virtual" => true, "title" => "Контрагент", "require" => false, "default" => 0, "index" => "index", "show_in_table" => true, "show_in_form" => false, "readonly" => true],
@@ -306,7 +306,8 @@ class Act extends ABPTable
             ["name" => "order", "type" => "string", "virtual" => true, "title" => "Заказ", "require" => false, "default" => 0, "index" => "index", "show_in_table" => true, "show_in_form" => false, "readonly" => true],
             ["name" => "sum", "type" => "money", "virtual" => true, "title" => "Сумма", "show_in_table" => true, "show_in_form" => false, "readonly" => true],
             // фильтры
-            // ["name" => "order_.contract_.contractable", "type" => "morph", "tables" => [["table" => "kontragents", "title" => "Контрагенты", "type" => "App\\Kontragent"]], "filter" => true, "virtual" => true, "title" => "Контрагент", "show_in_table" => false, "show_in_form" => false],
+            ["name" => "order_.contract_.contractable", "type" => "morph", "tables" => [["table" => "kontragents", "title" => "Контрагенты", "type" => "App\\Kontragent"]], "filter" => true, "virtual" => true, "title" => "Контрагент", "show_in_table" => false, "show_in_form" => false],
+            ["name" => "items.nomenklatura_.groups", "type" => "groups", "table" => "nomenklatura", "filter" => true, "virtual" => true, "title" => "Контрагент", "show_in_table" => false, "show_in_form" => false],
 
         ]);
 
@@ -385,7 +386,10 @@ class Act extends ABPTable
     {
         $order = $this->order_()->first();
         if ($order) {
-            return $order->contract_type;
+            $contract = $order->contract_()->first();
+            if ($contract) {
+                return $contract->contract_type;
+            }
         }
         return '';
     }

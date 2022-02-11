@@ -12,6 +12,8 @@ use App\Notifications\Sync1CNotification;
 use Carbon\Carbon;
 use App\User;
 use App\SkladReceive;
+use App\Act;
+use App\Production;
 
 class Sync1c implements ShouldQueue
 {
@@ -42,7 +44,6 @@ class Sync1c implements ShouldQueue
     {
         $this->log("Начинаем экспорт в 1С");
         // переносим поступления
-
         $skald_receives = SkladReceive::where('is_active', 1)->whereNull('uuid')->get();
         $skald_receives_count = $skald_receives->count();
         if ($skald_receives_count > 0) {
@@ -57,6 +58,38 @@ class Sync1c implements ShouldQueue
             }
         } else {
             $this->log("Проведенных неэкспортированных приходных накладных нет. Пропускаем...");
+        }
+        // переносим производства
+        $productions = Production::where('is_active', 1)->whereNull('uuid')->get();
+        $productions_count = $productions->count();
+        if ($productions_count > 0) {
+            $this->log("Начинаем экспорт производств (всего " . $productions_count . " шт)");
+            foreach ($productions as $production) {
+                $res = $production->export_to_1c();
+                if ($res["is_error"]) {
+                    $this->log("Ошибка экспорта производства " . $production->select_list_title, $res["errors"]);
+                } else {
+                    $this->log("Производство " . $production->select_list_title . " экспортировано", $res["logs"]);
+                }
+            }
+        } else {
+            $this->log("Проведенных неэкспортированных производств нет. Пропускаем...");
+        }
+        // переносим реализации
+        $acts = Act::where('is_active', 1)->whereNull('uuid')->get();
+        $acts_count = $acts->count();
+        if ($acts_count > 0) {
+            $this->log("Начинаем экспорт реализаций (всего " . $acts_count . " шт)");
+            foreach ($acts as $act) {
+                $res = $act->export_to_1c();
+                if ($res["is_error"]) {
+                    $this->log("Ошибка экспорта реализации " . $act->select_list_title, $res["errors"]);
+                } else {
+                    $this->log("Реализация " . $act->select_list_title . " экспортировано", $res["logs"]);
+                }
+            }
+        } else {
+            $this->log("Проведенных неэкспортированных реализаций нет. Пропускаем...");
         }
 
         $this->log("Экспорт в 1С завершен " . date('d.m.Y в H:i:s') . "(UTC)");

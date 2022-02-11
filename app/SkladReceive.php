@@ -148,6 +148,11 @@ class SkladReceive extends ABPTable
             ["name" => "price_include_nds", "name_1c" => "НДСВключенВСтоимость", "type" => "boolean", "title" => "НДС включен в стоимость", "require" => true, 'default' => false, "index" => "index", "show_in_table" => false, "show_in_form" => false, "ignore_filters" => true],
             ["name" => "sum_include_nds", "name_1c" => "СуммаВключаетНДС", "type" => "boolean", "title" => "Сумма включает НДС", "require" => true, 'default' => false, "index" => "index", "show_in_table" => false, "show_in_form" => false, "ignore_filters" => true],
             ["name" => "summa", "name_1c" => "СуммаДокумента", "type" => "money", "virtual" => true, "title" => "Сумма документа", "require" => false, "default" => 0, "index" => "index", "show_in_table" => true, "show_in_form" => false, "readonly" => true],
+
+            // фильтры
+            ["name" => "items.nomenklatura_.groups", "type" => "groups", "table" => "nomenklatura", "filter" => true, "virtual" => true, "title" => "Контрагент", "show_in_table" => false, "show_in_form" => false],
+            ["name" => "items.nomenklatura_id", "type" => "select", "table" => "nomenklatura", "filter" => true, "virtual" => true, "title" => "Номенклатура", "show_in_table" => false, "show_in_form" => false],
+
         ]);
         // добавляем читателей
         $this->appends = array_merge($this->appends, ['dogovor', 'sklad', 'firm', 'kontragent', 'summa']);
