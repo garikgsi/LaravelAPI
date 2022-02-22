@@ -13,6 +13,7 @@ class Bank extends ABPTable
     use Traits\Trait1C;
 
     /*
+
     "name": "Catalog_Банки"
         {
         "Ref_Key": "0da9dfe4-d7ac-11e5-0a9b-000c295e30eb",
