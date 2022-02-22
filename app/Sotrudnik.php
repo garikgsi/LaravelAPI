@@ -44,9 +44,15 @@ class Sotrudnik extends ABPTable
 
 
     // привязка к пользователю системы
-    public function user()
+    public function user_info()
     {
         return $this->morphOne('App\UserInfo', 'userable');
+    }
+
+    public function user()
+    {
+        $user_info = $this->user_info()->first();
+        return $user_info ? $user_info->user_ : null;
     }
 
     // склады, в которых сотрудник является кладовщиком

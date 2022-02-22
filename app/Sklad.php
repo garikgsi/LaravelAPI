@@ -52,7 +52,7 @@ class Sklad extends ABPTable
     }
 
     // связь склад - кладовщик
-    public function keeper()
+    public function keeper_()
     {
         return $this->belongsTo('App\Sotrudnik', 'keeper_id');
     }

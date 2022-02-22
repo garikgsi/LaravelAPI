@@ -24,16 +24,7 @@ $factory->define(User::class, function (Faker $faker) {
         'email_verified_at' => now(),
         'password' => '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', // password
         'remember_token' => Str::random(10),
+        'api_token' => Str::random(80),
+        'api_token_lifetime' => '2024-03-30 10:00:00'
     ];
-});
-
-$factory->define(\App\EdIsm::class, function (Faker $faker, $params) {
-    $res = [
-        "name" => $faker->words(1, true),
-        // "comment" => $faker->words(1, true),
-        "okei" => $faker->unique()->numberBetween(100, 999)
-    ];
-    // $res = array_merge(factory(\App\ABPTable::class)->raw(), $res, $params);
-    $res = array_merge($res, $params);
-    return $res;
 });

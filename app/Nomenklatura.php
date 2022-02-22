@@ -194,21 +194,25 @@ class Nomenklatura extends ABPTable
     // выдаем строку для селекта
     public function getSelectListTitleAttribute()
     {
-        $title = $this->doc_title;
-        $title .= $this->ostatok > 0 ? ' (остаток ' . $this->ostatok . ' ' . $this->ed_ism . ')' : ' (нет в наличии)';
+        // создадим экземпляр, если в запросе не будут указаны нужные поля
+        $n = Nomenklatura::find($this->id);
+        $title = $n->doc_title;
+        $title .= $n->ostatok > 0 ? ' (остаток ' . $n->ostatok . ' ' . $n->ed_ism . ')' : ' (нет в наличии)';
         ABPCache::put_select_list($this->table, $this->attributes["id"], $title);
         return $title;
     }
     // выдаем наименование для документов
     public function getDocTitleAttribute()
     {
+        // создадим экземпляр, если в запросе не будут указаны нужные поля
+        $n = Nomenklatura::withTrashed()->find($this->id);
         // $id = $this->attributes["id"];
         // $model = $this->withTrashed()->find($this->attributes["id"]);
         $title = "";
         $fields = ["name", "artikul", "description", "part_num"];
         // $m = $model;
         foreach ($fields as $field) {
-            if (isset($this->attributes[$field]) && $this->attributes[$field]) $title .= $this->attributes[$field] . " ";
+            if (isset($n->$field) && $n->$field) $title .= $n->$field . " ";
         }
         $title = trim($title);
         return $title;

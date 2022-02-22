@@ -358,7 +358,7 @@ class APIController extends Controller
                 }
                 // надо передавать модель
                 if ($getModel) {
-                    if (!$getList && !$getData) $this->response->set_data([], $t->count());
+                    if (!$getList && !$getData) $this->response->set_data([], $t->where('id', '>', 1)->count());
                     $this->response->set_model($t->model())->set_extensions($t->get_extensions());
                 }
                 return $this->response->response($getModel);
@@ -698,7 +698,7 @@ class APIController extends Controller
                 // });
                 $data = $tags->get()->sortBy('tag')->values()->all();
                 // dd($tags->get()->toArray()[0]);
-                return $this->response->set_data($data, $tags->count(), 200)->response();
+                return $this->response->set_data($data, count($data), 200)->response();
             } else {
                 return $this->response->set_err('Нет прав на просмотр', 403)->response();
             }

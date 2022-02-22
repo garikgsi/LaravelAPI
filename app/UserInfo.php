@@ -32,7 +32,7 @@ class UserInfo extends ABPTable
     }
 
     // пользователь
-    public function user()
+    public function user_()
     {
         return $this->belongsTo('App\User');
     }
@@ -71,19 +71,26 @@ class UserInfo extends ABPTable
     // разрешения
     public function getPermissionsAttribute()
     {
-        $p = [];
-        if (isset($this->attributes['user_id'])) {
+        $p = [
+            "show" => 0,
+            "edit" => 0,
+            "copy" => 0,
+            "delete" => 0
+        ];
+        if (isset($this->user_id)) {
             $user = Auth::user();
-            if ($this->attributes['user_id'] == $user->id) {
-                $p["show"] = 1;
-                $p["edit"] = 1;
-            }
+            if ($user) {
+                if ($this->user_id == $user->id) {
+                    $p["show"] = 1;
+                    $p["edit"] = 1;
+                }
 
-            if ($user->hasRole('admin')) {
-                $p["show"] = 1;
-                $p["edit"] = 1;
-                $p["copy"] = 1;
-                $p["delete"] = 1;
+                if ($user->hasRole('admin')) {
+                    $p["show"] = 1;
+                    $p["edit"] = 1;
+                    $p["copy"] = 1;
+                    $p["delete"] = 1;
+                }
             }
         }
         return $p;
@@ -125,8 +132,7 @@ class UserInfo extends ABPTable
     public function getUserAttribute()
     {
         if (isset($this->attributes['user_id'])) {
-            $user = new User;
-            $this_user = $user->where('id', $this->attributes['user_id'])->first();
+            $this_user = User::where('id', $this->attributes['user_id'])->first();
             if ($this_user) {
                 return $this_user;
             }

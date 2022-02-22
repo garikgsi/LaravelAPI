@@ -67,7 +67,7 @@ class SkladReceiveItem extends ABPTable
         ]);
 
         // добавляем читателей
-        $this->appends = array_merge($this->appends, ['nomenklatura', 'ed_ism', 'is_usluga', 'stavka_nds', 'summa_nds']);
+        $this->appends = array_merge($this->appends, ['nomenklatura', 'ed_ism', 'is_usluga', 'stavka_nds_title', 'summa_nds']);
     }
 
     function nomenklatura_()
@@ -105,7 +105,7 @@ class SkladReceiveItem extends ABPTable
         return $n ? boolval($n->is_usluga) : false;
     }
     // ставка НДС
-    public function getStavkaNdsAttribute()
+    public function getStavkaNdsTitleAttribute()
     {
         $n = $this->nds_()->first();
         return $n ? $n->name : 'БезНДС';

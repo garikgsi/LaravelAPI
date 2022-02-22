@@ -11,6 +11,10 @@ class SkladReceiveItemObserver
     // проверки при обновлении
     public function saving(SkladReceiveItem $sri)
     {
+        // наименование номенклатуры
+        $sri->nomenklatura_name = $sri->nomenklatura_()->first()->doc_title;
+        // ставка НДС
+        $sri->stavka_nds = $sri->nds_->stavka;
         // проверим регистры накопления
         $res = $sri->mod_register(1);
         if ($res["is_error"]) abort(421, $res["err"]);

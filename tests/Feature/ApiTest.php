@@ -9,22 +9,29 @@ use Faker\Generator as Faker;
 use Tests\TestCase;
 use App\Nomenklatura;
 use App\User;
+use App\UserInfo;
+use App\Sotrudnik;
 use App\EdIsm;
 use App\Tag;
 use App\DocType;
 use App\Manufacturer;
 use App\NDS;
+use App\Sklad;
 use App\SkladReceive;
-use App\SkladReceiveItems;
+use App\SkladReceiveItem;
 use App\SkladMove;
 use App\SkladMoveItem;
 use App\Production;
 use App\ProductionItem;
 use App\ProductionComponent;
 use App\ProductionReplace;
+use App\Firm;
+use App\Kontragent;
 use Illuminate\Support\Str;
 use App\TableTag;
 use PhpParser\Node\Stmt\TryCatch;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class ApiTest extends TestCase
 {
@@ -48,12 +55,29 @@ class ApiTest extends TestCase
     private $admin_user;
     // faker
     private $faker;
+    // кол-во записей на страницу по умолчанию
     private $default_api_limit = 10;
+    // кол-во складов/кладовщиков
+    private $keepers_count = 3;
+    // кол-во приходных накладных
+    private $receive_count = 5;
 
     // setUp
     protected function setUp(): void
     {
         parent::setUp();
+
+        // $user_id = 1084;
+        // $sklad_id = 1757;
+        // $user = User::find($user_id);
+        // $user_info = $user ? $user->info : null;
+        // // сотрудник
+        // $sotrudnik = $user_info ? $user_info->sotrudnik() : null;
+
+        // пользователь == кладовщик
+        // $is_keeper = $sotrudnik && $sotrudnik->is_keeper($sklad_id);
+        // dd($user->toArray(), $user_info->toArray(), $sotrudnik->toArray(),  $is_keeper);
+
         $this->doc_types = DocType::select('id')->get()->pluck('id');
         $this->manufacturers = Manufacturer::select('id')->get()->pluck('id');
         $this->nds = NDS::where('name', 'БезНДС')->orWhere('name', 'НДС20')->get()->pluck('id');
@@ -73,16 +97,29 @@ class ApiTest extends TestCase
         TableTag::whereIn('tag_id', $groups_ids)->forceDelete();
         $groups->forceDelete();
 
-        $tables = [Nomenklatura::class, Manufacturer::class];
+        // удалим стандартные таблицы
+        $tables = [
+            Nomenklatura::class,
+            Manufacturer::class, UserInfo::class,
+            SkladReceive::class, SkladReceiveItem::class, Sklad::class,
+            Sotrudnik::class, SkladMove::class, SkladMoveItem::class
+        ];
         foreach ($tables as $table) {
             $table::where("comment", self::$comment)->forceDelete();
+        }
+
+        // удалим кладовщиков
+        try {
+            DB::connection('db1')->table('users')->where("name", 'like', self::$name_pref . '%')->delete();
+        } catch (\Throwable $th) {
+            //throw $th;
         }
     }
 
     // после всех тестов
     public static function tearDownAfterClass(): void
     {
-        parent::tearDownAfterClass();
+        // parent::tearDownAfterClass();
         self::cleanDb();
     }
 
@@ -404,31 +441,511 @@ class ApiTest extends TestCase
         $this->assertSame($nomenklatura, $response_data);
     }
 
-    // проверка добавления документов
-    public function testCreateDocuments()
+    // создаем сотрудников
+    public function testCreateEmployees()
     {
-        // остатки в виде коллекции
-        // [debet, document_type, document_id, nomenklatura_id, kolvo, sklad]
-        $remains = [];
-        // документы
-        $documents = [
-            // debet == 1 : поступления
-            1 => [SkladReceive::class, SkladMove::class],
-            // debet == 0 : расход
-            0 => [SkladMove::class, Production::class]
-        ];
-        // создаем приходы
+        for ($i = 0; $i < $this->keepers_count; $i++) {
+            // создаем сотрудника
+            $employ_data = [
+                "name" => self::$name_pref . Str::random(10),
+                "comment" => self::$comment,
+                'sure_name' => Str::random(10),
+                'first_name' => Str::random(10),
+                'patronymic' => Str::random(10),
+            ];
+            $employ_url = $this->api_pref . 'sotrudniks';
+            $employ_response = $this->actingAs($this->admin_user, 'api')->json('POST', $employ_url, $employ_data);
+            $employ_response->assertStatus(200)
+                ->assertJson([
+                    "is_error" => false,
+                    "count" => 1,
+                    'data' => $employ_data
+                ]);
+        }
+    }
 
+    // привязываем сотрудников к пользователям
+    public function testUpdateUserInfo()
+    {
+        $keepers_count = $this->keepers_count;
+        $keepers_before = User::where('name', 'like', self::$name_pref . '%')->get();
+        if ($keepers_before->count() < $keepers_count) {
+            // создаем 3 пользователя
+            for ($i = 0; $i < $keepers_count; $i++) {
+                factory(User::class)->create([
+                    'name' => self::$name_pref . Str::random(10)
+                ]);
+            }
+        }
+        $keepers = User::where('name', 'like', self::$name_pref . '%')->get();
+        $this->assertTrue($keepers->count() >= $keepers_count);
+        $keepers = User::where('name', 'like', self::$name_pref . '%')->take($this->keepers_count)->get();
+        $emloyers = Sotrudnik::where('comment', self::$comment)->get();
+        $i = 0;
+        foreach ($keepers as $keeper) {
+            // получим сотрудника
+            $employer = $emloyers->skip($i)->take(1)->first();
+
+            // обновим user_info
+            $user_info_data = [
+                "name" => self::$name_pref . Str::random(10),
+                "comment" => self::$comment,
+                'userable_type' => Sotrudnik::class,
+                'userable_id' => $employer->id,
+                'user_id' => $keeper->id,
+            ];
+            $user_info_url = $this->api_pref . 'user_info';
+            $user_info_response = $this->actingAs($this->admin_user, 'api')->json('POST', $user_info_url, $user_info_data);
+            $user_info_response->assertStatus(200)
+                ->assertJson([
+                    "is_error" => false,
+                    "count" => 1,
+                    'data' => $user_info_data
+                ]);
+            $i++;
+        }
+    }
+
+    // тест создания складов, пользователей-кладовщиков
+    public function testCreateSkladInfrastructure()
+    {
+        $emloyers = Sotrudnik::where('comment', self::$comment)->get();
+        foreach ($emloyers as $employer) {
+            // создаем склад с кладовщиком на борту
+            $data = [
+                "name" => self::$name_pref . Str::random(10),
+                "comment" => self::$comment,
+                'keeper_id' => $employer->id
+            ];
+
+            $url = $this->api_pref . 'sklads';
+            $response = $this->actingAs($this->admin_user, 'api')->json('POST', $url, $data);
+            $response->assertStatus(200)
+                ->assertJson([
+                    "is_error" => false,
+                    "count" => 1,
+                    'data' => $data
+                ]);
+            // проверим, что сотрудник стал кладовщиком
+            $response_data = $this->response_data($response)->toArray();
+
+            $this->assertTrue($employer->is_keeper($response_data['id']));
+        }
     }
 
 
+    // проверка добавления документов
+    public function testCreateReceiveDocuments()
+    {
+        // вся номенклатура
+        $nomenklatura = Nomenklatura::where('comment', self::$comment)->get();
+        // все склады
+        $sklads = Sklad::where('comment', self::$comment)->get();
+        // все фирмы
+        $firms = Firm::where('id', '>', 1)->get();
+        // все ставки НДС
+        $nds = NDS::where('id', '>', 1)->get();
+        // все контрагенты
+        $kontragents = Kontragent::where('id', '>', 1)->get();
+        // создаем приходы
+        for ($i = 0; $i < $this->receive_count; $i++) {
+            // генерим склад
+            $sklad = $sklads->random();
+            // данные накладной
+            $data = [
+                'comment' => self::$comment,
+                'sklad_id' => $sklad->id,
+                'kontragent_id' => $kontragents->random()->id,
+                'firm_id' => $firms->random()->id,
+                'in_doc_date' => now()->format('Y-m-d'),
+                'in_doc_num' => Str::random(3),
+                'doc_date' => Carbon::today()->subDays(rand(0, 365))->format('Y-m-d'),
+                'items' => []
+            ];
+            // позиции по накладной
+            $nomenklatura_items = [];
+            $items_data = [];
+            $sum_receive = 0;
+            $npp = 0;
+            // пока не наткнемся на уже вставленную номенклатуру
+            do {
+                // генерим строку накладной
+                $nom = $nomenklatura->random()->id;
+                $kolvo = $this->faker->randomFloat(0, 1, 200);
+                $price = $this->faker->randomFloat(2, 10, 1000000);
+                $summa = $kolvo * $price;
+
+                if (in_array($nom, $nomenklatura_items)) {
+                    break;
+                } else {
+                    $nomenklatura_items[] = $nom;
+                    $sum_receive += $summa;
+                    $items_data[] = [
+                        'nomenklatura_id' => $nom,
+                        'kolvo' => $kolvo,
+                        'price' => $price,
+                        'summa' => $summa,
+                        'nds_id' => $nds->random()->id,
+                        'comment' => self::$comment,
+                    ];
+                }
+                $npp++;
+            } while (true);
+            // добавляем позииции
+            $data['items'] = $items_data;
+            // вставляем запись
+            $url = $this->api_pref . 'sklad_receives';
+            $response = $this->actingAs($this->admin_user, 'api')->json('POST', $url, $data);
+            $response->assertStatus(200);
+            $response->assertJson([
+                "is_error" => false,
+                "count" => 1
+            ]);
+            // данные проверим отдельно
+            $response_data = $this->response_data($response)->toArray();
+            // после создания сумма накладной должна автоматически рассчитаться
+            $this->assertSame(round($sum_receive, 2), round($response_data['summa'], 2), "summa php=$sum_receive");
+            // должен присвоится номер документа
+            $this->assertTrue(!is_null($response_data['doc_num']));
+            // грузоотправитель - равен контрагенту
+            $this->assertSame($response_data['kontragent_id'], $response_data['kontragent_otpravitel_id']);
+            // грузополучатель - равен фирме
+            $this->assertSame($response_data['firm_id'], $response_data['firm_poluchatel_id']);
+            // проверяем позиции накладной
+            $items = $response_data['items'];
+            $this->assertTrue(count($items) == $npp);
+            foreach ($items as $item) {
+                // наименование должно быть заполнено
+                $nomenklatura_item = Nomenklatura::find($item->nomenklatura_id);
+                $this->assertSame($nomenklatura_item->doc_title, $item->nomenklatura_name, "nomenklatura_title must be set to [$nomenklatura_item->doc_title], but set to [$item->nomenklatura_name]. check trigger SkladReceiveItemObserver!");
+                // должна быть рассчитана сумма НДС
+                $stavka_nds = $nds->find($item->nds_id)->stavka;
+                $this->assertSame($stavka_nds, $item->stavka_nds, "stavka_nds must be set to [$stavka_nds], but set to [$item->stavka_nds]. check trigger SkladReceiveItemObserver!");
+                $this->assertSame(round($item->summa * $stavka_nds, 2), round($item->summa_nds, 2));
+            }
+        }
+    }
+
+    // проверка нулевых остатков по всем складам - до проведения документов
+    //     Route::get('/{table}?scope=stock_balance.9, - добавить в запрос scope. Параметры передаются через точки, скопы разделяются запятыми
+    public function testCheckNullRemains()
+    {
+        // все склады
+        $sklads = Sklad::where('comment', self::$comment)->get();
+        foreach ($sklads as $sklad) {
+            $url = $this->api_pref . "nomenklatura?scope=stock_balance.$sklad->id";
+
+            $response = $this->actingAs($this->admin_user, 'api')->json('GET', $url)->assertStatus(200)
+                ->assertJson([
+                    "is_error" => false,
+                    "count" => 0,
+                    'data' => []
+                ]);
+        }
+    }
+
+    // проверяем проведение документа пользователем не обладающим правами
+    public function testCheckPermissionsToSetActiveDocument()
+    {
+        // поступления
+        $receive1 = SkladReceive::where('comment', self::$comment)->first();
+        // склад
+        $sklad = Sklad::find($receive1->sklad_id);
+        // складарь
+        $keeper = Sotrudnik::find($sklad->keeper_id)->user();
+        // не складарь и не админ
+        $user = User::where('name', 'like', self::$name_pref . '%')->whereNotIn('id', [$this->admin_user->id, $keeper->id])->take(1)->first();
+        // url
+        $url = $this->api_pref . "sklad_receives/$receive1->id/post";
+        // данные
+        $data = ["is_active" => 1];
+        $response = $this->actingAs($user, 'api')->json('PATCH', $url, $data)->assertStatus(421)
+            ->assertJson([
+                "is_error" => true,
+            ]);
+        $this->assertTrue($this->response_has_error($response, ['Приходовать накладные может только кладовщик или администратор']));
+    }
+
+    // проводим от имени кладовщика
+    public function testKeeperSetActiveDocuments()
+    {
+        // поступления
+        $receive1 = SkladReceive::where('comment', self::$comment)->first();
+        // склад
+        $sklad = Sklad::find($receive1->sklad_id);
+        // складарь
+        $keeper = Sotrudnik::find($sklad->keeper_id)->user();
+        // url
+        $url = $this->api_pref . "sklad_receives/$receive1->id/post";
+        // данные
+        $data = ["is_active" => 1];
+        $response = $this->actingAs($keeper, 'api')->json('PATCH', $url, $data)->assertStatus(202)
+            ->assertJson([
+                "is_error" => false,
+                "count" => 1,
+                'data' => $data
+            ]);
+    }
+
+    // проводим документы от имени администратора
+    // PATCH /api/v1/{table_name}/{N}/post - проводим документ с id=N в таблице table_name. В запросе необходимо передать массив полей для проведения (в моделе должны быть отмечены признаком "post"=>true). В ответе count сервер вернет измененную запись
+    public function testSetActiveDocuments()
+    {
+        $remains = collect([]);
+        // поступления
+        $receives = SkladReceive::where('comment', self::$comment)->where('is_active', '<>', 1)->get();
+        // для каждого поступления
+        foreach ($receives as $receive) {
+            // url
+            $url = $this->api_pref . "sklad_receives/$receive->id/post";
+            // данные
+            $data = ["is_active" => 1];
+            $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, $data)->assertStatus(202)
+                ->assertJson([
+                    "is_error" => false,
+                    "count" => 1,
+                    'data' => $data
+                ]);
+        }
+    }
+
+    // проверяем остатки после прихода (дата не важна)
+    public function testCheckRemainsAfterReceive()
+    {
+        // получим остатки расчетной модели
+        $ostatki_by_sklad = $this->calcRemains();
+
+        // получаем остатки
+        foreach ($ostatki_by_sklad as $sklad_id => $ostatki_nomenklatur) {
+            $url = $this->api_pref . "nomenklatura?limit=-1&scope=stock_balance.$sklad_id";
+
+            $response = $this->actingAs($this->admin_user, 'api')->json('GET', $url)->assertStatus(200);
+            // данные остатков
+            $response_data = $this->response_data($response);
+            $response_remains = $response_data->sortBy('id')->mapWithKeys(function ($response_data) {
+                return [$response_data->id => round($response_data->stock_balance)];
+            })->all();
+            // сверяем массивы
+            $this->assertSame($ostatki_nomenklatur, $response_remains, "remains os sklad $sklad_id & url=$url not matched to data=" . $response_data->count());
+        }
+    }
+
+    // создадим перемещение по складам
+    public function testCreateSkladMove()
+    {
+        // текущие остатки
+        $ostatki_by_sklad = $this->calcRemains();
+
+        // получаем остатки
+        foreach ($ostatki_by_sklad as $sklad_out => $ostatki_nomenklatur) {
+            // все фирмы
+            $firms = Firm::where('id', '>', 1)->get();
+            // все склады
+            $sklads = Sklad::where('comment', self::$comment)->where('id', '<>', $sklad_out)->get();
+            // генерим склад получения
+            $sklad_in = $sklads->random();
+            // все сотрудники
+            $emloyers = Sotrudnik::where('comment', self::$comment)->get();
+            // данные накладной
+            $data = [
+                'comment' => self::$comment,
+                'sklad_out_id' => $sklad_out,
+                'sklad_in_id' => $sklad_out,
+                'firm_id' => $firms->random()->id,
+                'doc_date' => Carbon::today()->subDays(rand(0, 365))->format('Y-m-d'),
+                'transitable_type' => Sotrudnik::class,
+                'transitable_id' => $emloyers->random()->id,
+                'items' => []
+            ];
+
+            // перенесем только номенклатуры только с четными id и самую первую
+            // для самой первой укажем кол-во на 21 больше, чем есть в остатке
+            $N = $this->faker->randomFloat(0, 1, 100);
+            foreach ($ostatki_nomenklatur as $nomenklatura_id => $ostatok) {
+                $is_first = count($data['items']) == 0;
+                if ($is_first || $nomenklatura_id % 2 == 0) {
+                    $kolvo = $is_first ? $ostatok + $N : $this->faker->randomFloat(0, 1, $ostatok);
+                    $data['items'][] = [
+                        'nomenklatura_id' => $nomenklatura_id,
+                        'kolvo' => $kolvo,
+                        'comment' => self::$comment,
+                        'name' => $is_first ? $N : NULL // кол-во превышенного остатка
+                    ];
+                }
+            }
+
+            // вставляем запись
+            $url = $this->api_pref . 'sklad_moves';
+            $response = $this->actingAs($this->admin_user, 'api')->json('POST', $url, $data);
+            $response->assertStatus(421)
+                ->assertJson([
+                    "is_error" => true,
+                ]);
+            $this->assertTrue($this->response_has_error($response, ['Склад отправления равен складу назначения']), "Error from response: $this->get_response_error");
+
+            // меняем склад на нужный и еще раз выполняем запрос
+            $data['sklad_in_id'] = $sklad_in->id;
+            $response = $this->actingAs($this->admin_user, 'api')->json('POST', $url, $data);
+            try {
+                $response->assertStatus(200);
+            } catch (\Throwable $th) {
+                dd($url, $data, $response);
+            }
+            $response->assertJson([
+                "is_error" => false,
+                "count" => 1,
+            ]);
+        }
+    }
+
+    // проверка проведения перемещения ни кладовщиком ни админом
+    public function testPermissionsSetActiveSkladMove()
+    {
+        // выбираем первое непроведенное перемещение
+        $move = SkladMove::where('comment', self::$comment)->where('is_active', 0)->first();
+        // склады
+        $sklad_in = Sklad::find($move->sklad_in_id);
+        $sklad_out = Sklad::find($move->sklad_out_id);
+        // получим складарей складов отправителя и получателя
+        $keeper_sklad_in = Sotrudnik::find($sklad_in->keeper_id)->user();
+        $keeper_sklad_out = Sotrudnik::find($sklad_out->keeper_id)->user();
+        // пользователь - не складарь и не админ
+        $user = User::where('name', 'like', self::$name_pref . '%')->whereNotIn('id', [$this->admin_user->id, $keeper_sklad_in->id, $keeper_sklad_out->id])->take(1)->first();
+        // url
+        $url = $this->api_pref . "sklad_moves/$move->id/post";
+        // данные
+        $data = ["is_out" => 1];
+        $response = $this->actingAs($user, 'api')->json('PATCH', $url, $data)->assertStatus(421)
+            ->assertJson([
+                "is_error" => true,
+            ]);
+        $this->assertTrue($this->response_has_error($response, ['Отправлять(проводить) со склада отправления может только кладовщик склада отправления или администратор']));
+    }
+
+    // проверка полного проведения перемещения ни кладовщиком отправления
+    public function testPermissionsFullSetActiveSkladMoveByKeeper()
+    {
+        // выбираем первое непроведенное перемещение
+        $move = SkladMove::where('comment', self::$comment)->where('is_active', 0)->first();
+        // склады
+        $sklad_out = Sklad::find($move->sklad_out_id);
+        // получим складарей складов отправителя и получателя
+        $keeper_sklad_out = Sotrudnik::find($sklad_out->keeper_id)->user();
+        // url
+        $url = $this->api_pref . "sklad_moves/$move->id/post";
+        // данные
+        $data = ["is_active" => 1];
+        $response = $this->actingAs($keeper_sklad_out, 'api')->json('PATCH', $url, $data)->assertStatus(421)
+            ->assertJson([
+                "is_error" => true,
+            ]);
+        $this->assertTrue($this->response_has_error($response, ['Проводить и распроводить перемещение целиком может только администратор']));
+    }
+
+    // попытка оприходования на склад получения без проведения со склада отправления
+    public function testPermissionsSetInWithoutOut()
+    {
+        // выбираем первое непроведенное перемещение
+        $move = SkladMove::where('comment', self::$comment)->where('is_active', 0)->first();
+        // склады
+        $sklad_in = Sklad::find($move->sklad_in_id);
+        // получим складарей складов отправителя и получателя
+        $keeper_sklad_in = Sotrudnik::find($sklad_in->keeper_id)->user();
+        // url
+        $url = $this->api_pref . "sklad_moves/$move->id/post";
+        // данные
+        $data = ["is_in" => 1];
+        $response = $this->actingAs($keeper_sklad_in, 'api')->json('PATCH', $url, $data)->assertStatus(421)
+            ->assertJson([
+                "is_error" => true,
+            ]);
+        $this->assertTrue($this->response_has_error($response, ['Принимать(проводить) на склад получения можно только после отправки(проведения) со склада отправления']));
+    }
+
+    // TODO SkladMove!!!
+    // Принимать(проводить) на склад получения может только кладовщик склада получения или администратор
 
 
-    // TODO
-    //         &extensions=ext1,ext2,...,extN - добавить в ответ расширения для записи из возможных [files,images,groups,file_list,main_image,select_list_title]
-    //         &scope=stock_balance.9, - добавить в запрос scope. Параметры передаются через точки, скопы разделяются запятыми
-    //         & filters!!!!
+    // вычисляем остатки на установленную дату согласно внутренним регистрам (расчетная модель)
+    private function calcRemains($ltDate = null)
+    {
+        // // если не указана дата - считаем по состоянию на сегодня
+        // $date = $ltDate ? Carbon::createFromFormat('Y-m-d', $ltDate) : now();
 
+        // регистр остатков
+        $remains = collect([]);
+
+        // заполняем регистр
+        // все проведенные поступления
+        $receives = SkladReceive::where('comment', self::$comment)->where('is_active', '=', 1)->get();
+        foreach ($receives as $receive) {
+            // добавим остатки в массив-регистр
+            foreach ($receive->items as $item) {
+                $remains->push([
+                    'document_type' => SkladReceive::class,
+                    'document_id' => $receive->id,
+                    'document_date' => $receive->doc_date,
+                    'sklad_id' => $receive->sklad_id,
+                    'saldo' => 1,
+                    'nomenklatura_id' => $item->nomenklatura_id,
+                    'kolvo' => $item->kolvo,
+                    'price' => $item->price,
+                    'summa' => $item->summa
+                ]);
+            }
+        }
+        // все отправленные перемещения
+        $moves_out = SkladMove::where('comment', self::$comment)->where('is_out', '=', 1)->get();
+        foreach ($moves_out as $move_out) {
+            // списываем
+            foreach ($move_out->items as $item) {
+                $remains->push([
+                    'document_type' => SkladMove::class,
+                    'document_id' => $move_out->id,
+                    'document_date' => $move_out->doc_date,
+                    'sklad_id' => $move_out->sklad_out_id,
+                    'saldo' => 0,
+                    'nomenklatura_id' => $item->nomenklatura_id,
+                    'kolvo' => -$item->kolvo,
+                    'price' => $item->price,
+                    'summa' => -$item->summa
+                ]);
+            }
+        }
+        // все полученные перемещения
+        $moves_out = SkladMove::where('comment', self::$comment)->where('is_in', '=', 1)->get();
+        foreach ($moves_out as $move_out) {
+            // приходуем
+            foreach ($move_out->items as $item) {
+                $remains->push([
+                    'document_type' => SkladMove::class,
+                    'document_id' => $move_out->id,
+                    'document_date' => $move_out->doc_date,
+                    'sklad_id' => $move_out->sklad_out_id,
+                    'saldo' => 1,
+                    'nomenklatura_id' => $item->nomenklatura_id,
+                    'kolvo' => $item->kolvo,
+                    'price' => $item->price,
+                    'summa' => $item->summa
+                ]);
+            }
+        }
+
+        // проверяем остатки
+        $nomenklatura_by_sklad = $remains
+            // ->filter(function ($item) use ($date) {
+            //     return Carbon::createFromFormat('Y-m-d', $item['document_date'])->lte($date);
+            // })
+            ->groupBy(['sklad_id', function ($item) {
+                return $item['nomenklatura_id'];
+            }]);
+        $ostatki_by_sklad = $nomenklatura_by_sklad->map(function ($ostatki_by_sklad) {
+            return $ostatki_by_sklad->map(function ($ostatki_by_nomenklatura) {
+                return $ostatki_by_nomenklatura->sum('kolvo');
+            })->sortKeys();
+        })->toArray();
+        return $ostatki_by_sklad;
+    }
 
     // функция получения данных запроса
     // return collection of data
@@ -436,6 +953,27 @@ class ApiTest extends TestCase
     {
         return collect(json_decode($response->getContent())->data);
     }
+
+    // функция проверяет наличие строк в ошибке запроса
+    private function response_has_error($response, $text_array)
+    {
+        $err = $this->get_response_error($response);
+        foreach ($text_array as $needle) {
+            if (mb_strpos($err, $needle) === false) return false;
+        }
+        return true;
+    }
+
+    private function get_response_error($response)
+    {
+        return json_decode($response->getContent())->error[0];
+    }
+
+
+    // TODO
+    //         &extensions=ext1,ext2,...,extN - добавить в ответ расширения для записи из возможных [files,images,groups,file_list,main_image,select_list_title]
+    //         & filters!!!!
+
 
     // GET /api/v1/table_name?odata=[full|data|model|list|count] - формат вывода данных data - только данные, model - только модель столбцов таблицы,
     //                                                      full - данные и модель, list - список в виде массива ['id'=>'N', 'title'=>'template']

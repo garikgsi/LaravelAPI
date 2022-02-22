@@ -706,29 +706,31 @@ class ABPTable extends Model
             if (isset($req['fields']) || isset($req["trashed"])) {
                 $cols = array();
                 // с удаленными записями
-                if (isset($req["trashed"])) {
+                if (isset($req["trashed"]) && boolval($req["trashed"]) === true) {
                     $cols[] = "deleted_at";
                 }
-                $fields = explode(',', urldecode($req['fields']));
-                foreach ($fields as $f) {
-                    $f = trim($f);
-                    // если столбец есть в таблице
-                    if ($this->has_column($f)) {
-                        $cols[] = $f;
-                    } else {
-                        // если столбец виртуальный
-                        if (in_array($f, $this->appends)) {
-                            // если столбец есть в массиве hidden - нужно добавить в массив makeVisible
-                            // if (in_array($f,$this->hidden)) {
-                            //     $make_visible[] = $f;
-                            // }
-                            $make_visible[] = $f;
+                if (isset($req['fields'])) {
+                    $fields = explode(',', urldecode($req['fields']));
+                    foreach ($fields as $f) {
+                        $f = trim($f);
+                        // если столбец есть в таблице
+                        if ($this->has_column($f)) {
+                            $cols[] = $f;
+                        } else {
+                            // если столбец виртуальный
+                            if (in_array($f, $this->appends)) {
+                                // если столбец есть в массиве hidden - нужно добавить в массив makeVisible
+                                // if (in_array($f,$this->hidden)) {
+                                //     $make_visible[] = $f;
+                                // }
+                                $make_visible[] = $f;
+                            }
                         }
                     }
-                }
-                if (count($cols) > 0) {
-                    $data = $data->select($cols);
-                    $show_all_fields = false;
+                    if (count($cols) > 0) {
+                        $data = $data->select($cols);
+                        $show_all_fields = false;
+                    }
                 }
                 unset($req['fields']);
             }
@@ -1025,7 +1027,7 @@ class ABPTable extends Model
         }
 
         // с удаленными записями
-        if (isset($req["trashed"])) {
+        if (isset($req["trashed"]) && boolval($req["trashed"]) === true) {
             $data = $data->withTrashed();
         }
         // проверим контексты
@@ -1171,8 +1173,8 @@ class ABPTable extends Model
         $data = $this->apply_request_filters($request, [], null, $only_count);
 
         return [
-            "data" => $data["data"],
-            "itogs" => $data["itogs"],
+            "data" => isset($data["data"]) ? $data["data"] : [],
+            "itogs" => isset($data["itogs"]) ? $data["itogs"] : [],
             "count" => $this->get_count()
         ];
     }

@@ -14,6 +14,7 @@ class SkladReceiveObserver
     protected $sklad;
     protected $sklad_title;
     protected $sotrudnik;
+    protected $user;
     // пользователь == кладовщик
     protected $is_keeper;
     // пользователь = администратор
@@ -53,6 +54,7 @@ class SkladReceiveObserver
 
         // приходовать может только кладовщик склада
         if ($this->if_change('is_active') && !$this->is_keeper && !$this->is_admin) {
+
             abort(421, '#SRO. Приходовать накладные может только кладовщик или администратор');
             return false;
         }
@@ -156,11 +158,12 @@ class SkladReceiveObserver
         $this->sklad_title = $sr->sklad;
         // пользователь
         $user = Auth::user();
+        $this->user = $user;
         $user_info = $user ? $user->info : null;
         // сотрудник
         $this->sotrudnik = $user_info ? $user_info->sotrudnik() : null;
         // пользователь == кладовщик
-        $this->is_keeper = $this->sotrudnik && $this->sotrudnik->is_keeper($sr->getOriginal('sklad_out_id'));
+        $this->is_keeper = $this->sotrudnik && $this->sotrudnik->is_keeper($sr->getOriginal('sklad_id'));
         // пользователь = администратор
         $this->is_admin = $user_info ? $user_info->is_admin() : false;
         // старые значения
