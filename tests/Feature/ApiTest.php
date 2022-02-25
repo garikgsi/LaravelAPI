@@ -1133,6 +1133,8 @@ class ApiTest extends TestCase
                 ]);
             }
         }
+        // все проведенные производства
+        $productions = Production::where('comment', self::$comment)->where('is_active', '=', 1)->get();
 
         // проверяем остатки
         $nomenklatura_by_sklad = $remains
