@@ -4,6 +4,7 @@ namespace App\Triggers;
 
 use App\SkladReceive;
 use Illuminate\Support\Facades\Auth;
+use App\Exceptions\TriggerException;
 
 
 class SkladReceiveObserver
@@ -54,8 +55,8 @@ class SkladReceiveObserver
 
         // приходовать может только кладовщик склада
         if ($this->if_change('is_active') && !$this->is_keeper && !$this->is_admin) {
-
-            abort(421, '#SRO. Приходовать накладные может только кладовщик или администратор');
+            // abort(421, '#SRO. Приходовать накладные может только кладовщик или администратор');
+            throw new TriggerException('#SRO. Приходовать накладные может только кладовщик или администратор');
             return false;
         }
 
@@ -64,7 +65,8 @@ class SkladReceiveObserver
         if ($this->if_set('is_active', 0)) {
             $check = $this->check_unactive($sr);
             if ($check !== true) {
-                abort(421, $check);
+                // abort(421, $check);
+                throw new TriggerException($check);
                 return false;
             }
         }
@@ -79,7 +81,8 @@ class SkladReceiveObserver
             foreach ($items as $item) {
                 $res = $item->touch();
                 if (!$res) {
-                    abort(421, '#SRO. Запись накладной ' . $item->id . ' не удалось сохранить');
+                    throw new TriggerException('#SRO. Запись накладной ' . $item->id . ' не удалось сохранить');
+                    // abort(421, '#SRO. Запись накладной ' . $item->id . ' не удалось сохранить');
                     return false;
                 }
             }
@@ -96,7 +99,8 @@ class SkladReceiveObserver
         // проверим остатки после распроведения
         $check = $this->check_unactive($sr);
         if ($check !== true) {
-            abort(421, $check);
+            throw new TriggerException($check);
+            // abort(421, $check);
             return false;
         }
     }
@@ -178,7 +182,8 @@ class SkladReceiveObserver
         if ($this->sr) {
             if (isset($this->old[$field]) && isset($this->new[$field]) && $this->old[$field] != $this->new[$field] && $this->new[$field] == $val) return true;
         } else {
-            abort(421, '#SRO. Чтобы использовать if_set нужно сначала инициализировать переменные');
+            throw new TriggerException('#SRO. Чтобы использовать if_set нужно сначала инициализировать переменные');
+            // abort(421, '#SRO. Чтобы использовать if_set нужно сначала инициализировать переменные');
             return false;
         }
         return false;
@@ -189,7 +194,8 @@ class SkladReceiveObserver
         if ($this->sr) {
             if (isset($this->old[$field]) && isset($this->new[$field]) &&  $this->old[$field] != $this->new[$field]) return true;
         } else {
-            abort(421, '#SRO. Чтобы использовать if_change нужно сначала инициализировать переменные');
+            throw new TriggerException('#SRO. Чтобы использовать if_change нужно сначала инициализировать переменные');
+            // abort(421, '#SRO. Чтобы использовать if_change нужно сначала инициализировать переменные');
             return false;
         }
         return false;

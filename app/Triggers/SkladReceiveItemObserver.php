@@ -3,6 +3,7 @@
 namespace App\Triggers;
 
 use App\SkladReceiveItem;
+use App\Exceptions\TriggerException;
 
 
 class SkladReceiveItemObserver
@@ -17,12 +18,14 @@ class SkladReceiveItemObserver
         $sri->stavka_nds = $sri->nds_->stavka;
         // проверим регистры накопления
         $res = $sri->mod_register(1);
-        if ($res["is_error"]) abort(421, $res["err"]);
+        if ($res["is_error"]) throw new TriggerException($res["err"]);
+        // if ($res["is_error"]) abort(421, $res["err"]);
 
         // кол-во серийников
         $sn_kolvo = $sri->get_sn_count();
         if ($sn_kolvo > $sri->kolvo) {
-            abort(421, "#SRIO.Для " . $sri->nomenklatura . " указано слишком много серийных номеров (" . $sn_kolvo . " из максимально возможных " . $sri->kolvo . ")");
+            throw new TriggerException("#SRIO.Для " . $sri->nomenklatura . " указано слишком много серийных номеров (" . $sn_kolvo . " из максимально возможных " . $sri->kolvo . ")");
+            // abort(421, "#SRIO.Для " . $sri->nomenklatura . " указано слишком много серийных номеров (" . $sn_kolvo . " из максимально возможных " . $sri->kolvo . ")");
             return false;
         }
     }
@@ -31,13 +34,15 @@ class SkladReceiveItemObserver
     {
         // обновим регистры накопления
         $res = $sri->mod_register(1, 'update_only');
-        if ($res["is_error"]) abort(421, $res["err"]);
+        if ($res["is_error"]) throw new TriggerException($res["err"]);
+        // if ($res["is_error"]) abort(421, $res["err"]);
 
         // обновим серийные номера
         $res_sn = $sri->mod_sn_register('update_only');
         // dd($res_sn);
         if ($res_sn["is_error"]) {
-            abort(421, "#SRIO." . $res_sn["err"]);
+            throw new TriggerException("#SRIO." . $res_sn["err"]);
+            // abort(421, "#SRIO." . $res_sn["err"]);
             return false;
         }
         // // обновим серийные номера
@@ -51,16 +56,19 @@ class SkladReceiveItemObserver
     {
         // проверим регистры накопления
         $res = $sri->mod_register(1, 'check_for_delete');
-        if ($res["is_error"]) abort(421, $res["err"]);
+        if ($res["is_error"]) throw new TriggerException($res["err"]);
+        // if ($res["is_error"]) abort(421, $res["err"]);
     }
 
     public function deleted(SkladReceiveItem $sri)
     {
         // удалим регистр
         $res = $sri->mod_register(1, 'delete_only');
-        if ($res["is_error"]) abort(421, $res["err"]);
+        if ($res["is_error"]) throw new TriggerException($res["err"]);
+        // if ($res["is_error"]) abort(421, $res["err"]);
         // удалим серийные номера
         $sn_res = $sri->delete_sn_register();
-        if (!$sn_res) abort(421, '#SRIO. Не удалось очистить базу данных серийных номеров для записи');
+        if (!$sn_res) throw new TriggerException('#SRIO. Не удалось очистить базу данных серийных номеров для записи');
+        // if (!$sn_res) abort(421, '#SRIO. Не удалось очистить базу данных серийных номеров для записи');
     }
 }

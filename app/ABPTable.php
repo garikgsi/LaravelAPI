@@ -20,7 +20,7 @@ use App\FileType;
 use App\Common\ABPStorage;
 use Illuminate\Database\QueryException;
 use Exception;
-
+use App\Exceptions\TriggerException;
 
 
 
@@ -1656,26 +1656,35 @@ class ABPTable extends Model
             // добавляем или изменяем существующую запись
             // print_r($data_array);
             // dd($data_array);
-            try {
-                if (isset($unique_check)) {
-                    $new_model = $this_model->updateOrCreate($unique_check, $data_array);
-                } else {
-                    $new_model = $this_model->fill($data_array);
-                    $new_model->save();
-                }
-            } catch (QueryException $e) {
-                // dd($e);
-                // ошибка исполнения запроса
-                // $errors[] = 'Ошибка БД №' . $e->code . ', SQL:' . $e->sql;
-                $errors[] = 'Ошибка БД: bindings=' . implode(',', $e->getBindings()) . ', SQL=' . $e->getSql();
-                // $errors[] = "Ошибка базы данных";
-            } catch (\Exception $e) {
-                // dd($e);
-                $errors[] = "Ошибка обработки запроса " . (isset($e->message) ? $e->message : '') . " in file " . (isset($e->file) ? $e->file : '') . ", line " . (isset($e->line) ? $e->line : '');
+
+            if (isset($unique_check)) {
+                $new_model = $this_model->updateOrCreate($unique_check, $data_array);
+            } else {
+                $new_model = $this_model->fill($data_array);
+                $new_model->save();
             }
+
+            // try {
+            //     if (isset($unique_check)) {
+            //         $new_model = $this_model->updateOrCreate($unique_check, $data_array);
+            //     } else {
+            //         $new_model = $this_model->fill($data_array);
+            //         $new_model->save();
+            //     }
+            // } catch (QueryException $e) {
+            //     // dd($e);
+            //     // ошибка исполнения запроса
+            //     // $errors[] = 'Ошибка БД №' . $e->code . ', SQL:' . $e->sql;
+            //     $errors[] = 'Ошибка БД: bindings=' . implode(',', $e->getBindings()) . ', SQL=' . $e->getSql();
+            //     // $errors[] = "Ошибка базы данных";
+            // } catch (TriggerException $e) {
+            //     $errors[] = $e->getMessage();
+            // } catch (\Exception $e) {
+            //     $errors[] = "Ошибка обработки запроса " . (isset($e->message) ? $e->message : '') . " in file " . (isset($e->file) ? $e->file : '') . ", line " . (isset($e->line) ? $e->line : '');
+            // }
         }
         // если все успешно сохранено
-        if ($new_model) {
+        if ($new_model && count($errors) == 0) {
             // для выдачи результата
             $with_sub_tables = [];
             // обработаем подчиненные таблицы, при наличии
@@ -2193,6 +2202,8 @@ class ABPTable extends Model
                     }
                     break;
                 case 'sub_table': {
+                        $model[] = ["name" => "name", "type" => "string", "max" => 1024, "title" => "Наименование", "require" => true, "default" => '', "index" => "index", "show_in_table" => false, "show_in_form" => false, "out_index" => 1000];
+                        $model[] = ["name" => "comment", "type" => "string", "max" => 255, "title" => "Комментарий", "require" => false, "default" => '', "out_index" => 1000, "show_in_table" => false, "show_in_form" => false];
                     }
                     break;
                 case 'register': {

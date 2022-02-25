@@ -504,6 +504,25 @@ class ApiTest extends TestCase
                 ]);
             $i++;
         }
+        // проверим назначение одного сотрудника двум разным пользователям
+        $first_user = $keepers->first();
+        $user_id = $first_user->id;
+        $user_info_data = [
+            "name" => self::$name_pref . Str::random(10),
+            "comment" => self::$comment,
+            'userable_type' => Sotrudnik::class,
+            'userable_id' => $employer->id,
+            'user_id' => $user_id,
+        ];
+        $user_info = UserInfo::where('user_id', $first_user->id)->first();
+        $current_user = UserInfo::where('userable_id', $employer->id)->where('userable_type', Sotrudnik::class)->first()->user_;
+        $user_info_url = $this->api_pref . 'user_info/' . $user_info->id;
+        $user_info_response = $this->actingAs($this->admin_user, 'api')->json('PUT', $user_info_url, $user_info_data);
+        $user_info_response->assertStatus(421)
+            ->assertJson([
+                "is_error" => true,
+            ]);
+        $this->assertTrue($this->response_has_error($user_info_response, ['уже закреплен за пользователем', $current_user->email]), "diff error: we want $current_user->email, server said " . $this->get_response_error($user_info_response));
     }
 
     // тест создания складов, пользователей-кладовщиков
@@ -726,8 +745,57 @@ class ApiTest extends TestCase
                 return [$response_data->id => round($response_data->stock_balance)];
             })->all();
             // сверяем массивы
-            $this->assertSame($ostatki_nomenklatur, $response_remains, "remains os sklad $sklad_id & url=$url not matched to data=" . $response_data->count());
+            $this->assertSame($ostatki_nomenklatur, $response_remains, "remains os sklad $sklad_id & url=$url not matched " . collect($ostatki_nomenklatur)->toJson() . " to data=" . collect($response_remains)->toJson());
         }
+    }
+
+    // тест создания перемещения с одинаковыми складами отправлени и получения
+    public function testCreateEqualInOutSkladMove()
+    {
+        // все фирмы
+        $firms = Firm::where('id', '>', 1)->get();
+        // все склады
+        $sklads = Sklad::where('comment', self::$comment)->get();
+        // вся номенклатура
+        $nomenklatura = Nomenklatura::where('comment', self::$comment)->get();
+        // генерим склад получения
+        $sklad_id = $sklads->random()->id;
+        // все сотрудники
+        $emloyers = Sotrudnik::where('comment', self::$comment)->get();
+        // данные накладной
+        $data = [
+            'comment' => self::$comment,
+            'sklad_out_id' => $sklad_id,
+            'sklad_in_id' => $sklad_id,
+            'firm_id' => $firms->random()->id,
+            'doc_date' => Carbon::today()->subDays(rand(0, 365))->format('Y-m-d'),
+            'transitable_type' => Sotrudnik::class,
+            'transitable_id' => $emloyers->random()->id,
+            'items' => [
+                [
+                    'nomenklatura_id' => $nomenklatura->random()->id,
+                    'kolvo' => $this->faker->randomFloat(0, 1, 100),
+                    'comment' => self::$comment,
+                ]
+            ]
+        ];
+        // вставляем запись
+        $url = $this->api_pref . 'sklad_moves';
+        $response = $this->actingAs($this->admin_user, 'api')->json('POST', $url, $data);
+        $response->assertStatus(421);
+        $response->assertJson([
+            "is_error" => true,
+        ]);
+        $this->assertTrue($this->response_has_error($response, ['Склад отправления равен складу назначения']));
+        // try {
+        // $response->assertStatus(421);
+        // $response->assertJson([
+        //     "is_error" => true,
+        // ]);
+        // $this->assertTrue($this->response_has_error($response, ['1Склад отправления равен складу назначения']));
+        // } catch (\Throwable $th) {
+        //     dd($url, $data, $response);
+        // }
     }
 
     // создадим перемещение по складам
@@ -737,6 +805,7 @@ class ApiTest extends TestCase
         $ostatki_by_sklad = $this->calcRemains();
 
         // получаем остатки
+        $i = 0;
         foreach ($ostatki_by_sklad as $sklad_out => $ostatki_nomenklatur) {
             // все фирмы
             $firms = Firm::where('id', '>', 1)->get();
@@ -750,7 +819,7 @@ class ApiTest extends TestCase
             $data = [
                 'comment' => self::$comment,
                 'sklad_out_id' => $sklad_out,
-                'sklad_in_id' => $sklad_out,
+                'sklad_in_id' => $sklad_in->id,
                 'firm_id' => $firms->random()->id,
                 'doc_date' => Carbon::today()->subDays(rand(0, 365))->format('Y-m-d'),
                 'transitable_type' => Sotrudnik::class,
@@ -759,10 +828,10 @@ class ApiTest extends TestCase
             ];
 
             // перенесем только номенклатуры только с четными id и самую первую
-            // для самой первой укажем кол-во на 21 больше, чем есть в остатке
+            // для самой первой укажем кол-во на N больше, чем есть в остатке
             $N = $this->faker->randomFloat(0, 1, 100);
             foreach ($ostatki_nomenklatur as $nomenklatura_id => $ostatok) {
-                $is_first = count($data['items']) == 0;
+                $is_first = $i == 0 && count($data['items']) == 0;
                 if ($is_first || $nomenklatura_id % 2 == 0) {
                     $kolvo = $is_first ? $ostatok + $N : $this->faker->randomFloat(0, 1, $ostatok);
                     $data['items'][] = [
@@ -777,15 +846,6 @@ class ApiTest extends TestCase
             // вставляем запись
             $url = $this->api_pref . 'sklad_moves';
             $response = $this->actingAs($this->admin_user, 'api')->json('POST', $url, $data);
-            $response->assertStatus(421)
-                ->assertJson([
-                    "is_error" => true,
-                ]);
-            $this->assertTrue($this->response_has_error($response, ['Склад отправления равен складу назначения']), "Error from response: $this->get_response_error");
-
-            // меняем склад на нужный и еще раз выполняем запрос
-            $data['sklad_in_id'] = $sklad_in->id;
-            $response = $this->actingAs($this->admin_user, 'api')->json('POST', $url, $data);
             try {
                 $response->assertStatus(200);
             } catch (\Throwable $th) {
@@ -795,6 +855,12 @@ class ApiTest extends TestCase
                 "is_error" => false,
                 "count" => 1,
             ]);
+            // данные проверим отдельно
+            $response_data = $this->response_data($response)->toArray();
+            // должен присвоится номер документа
+            $this->assertTrue(!is_null($response_data['doc_num']));
+
+            $i++;
         }
     }
 
@@ -829,7 +895,7 @@ class ApiTest extends TestCase
         $move = SkladMove::where('comment', self::$comment)->where('is_active', 0)->first();
         // склады
         $sklad_out = Sklad::find($move->sklad_out_id);
-        // получим складарей складов отправителя и получателя
+        // получим складарей складов отправителя
         $keeper_sklad_out = Sotrudnik::find($sklad_out->keeper_id)->user();
         // url
         $url = $this->api_pref . "sklad_moves/$move->id/post";
@@ -862,8 +928,145 @@ class ApiTest extends TestCase
         $this->assertTrue($this->response_has_error($response, ['Принимать(проводить) на склад получения можно только после отправки(проведения) со склада отправления']));
     }
 
-    // TODO SkladMove!!!
+    // Отправлять(проводить) со склада отправления может только кладовщик склада отправления или администратор
+    public function testCheckSendFromSkladOutOnlyKeeperOrAdmin()
+    {
+        // выбираем первое непроведенное перемещение
+        $move = SkladMove::where('comment', self::$comment)->where('is_active', 0)->first();
+        // склады
+        $sklad_out = Sklad::find($move->sklad_out_id);
+        // получим складарей складов отправителя и получателя
+        $keeper_sklad_out = Sotrudnik::find($sklad_out->keeper_id)->user();
+        // пользователь без прав
+        $user = User::where('name', 'like', self::$name_pref . '%')->whereNotIn('id', [$this->admin_user->id, $keeper_sklad_out->id])->take(1)->first();
+        // url
+        $url = $this->api_pref . "sklad_moves/$move->id/post";
+        // данные
+        $data = ["is_out" => 1];
+        $response = $this->actingAs($user, 'api')->json('PATCH', $url, $data)->assertStatus(421)
+            ->assertJson([
+                "is_error" => true,
+            ]);
+        $this->assertTrue($this->response_has_error($response, ['Отправлять(проводить) со склада отправления может только кладовщик склада отправления или администратор']));
+    }
+
     // Принимать(проводить) на склад получения может только кладовщик склада получения или администратор
+    public function testCheckReceiveToSkladInOnlyKeeperOrAdmin()
+    {
+        // выбираем первое непроведенное перемещение
+        $move = SkladMove::where('comment', self::$comment)->where('is_active', 0)->first();
+        // склады
+        $sklad_in = Sklad::find($move->sklad_in_id);
+        // получим складарей складов отправителя и получателя
+        $keeper_sklad_in = Sotrudnik::find($sklad_in->keeper_id)->user();
+        // пользователь без прав
+        $user = User::where('name', 'like', self::$name_pref . '%')->whereNotIn('id', [$this->admin_user->id, $keeper_sklad_in->id])->take(1)->first();
+        // url
+        $url = $this->api_pref . "sklad_moves/$move->id/post";
+        // данные
+        $data = ["is_in" => 1];
+        $response = $this->actingAs($user, 'api')->json('PATCH', $url, $data)->assertStatus(421)
+            ->assertJson([
+                "is_error" => true,
+            ]);
+        $this->assertTrue($this->response_has_error($response, ['Принимать(проводить) на склад получения может только кладовщик склада получения или администратор']));
+    }
+
+    // SkladMove отправляем со склада c количеством, превышающим остатки
+    public function testSendSkladMoveWithWrongKolvo()
+    {
+        // выбираем первое непроведенное перемещение cодержащее запись с ошибочным кол-вом
+        $moves = SkladMove::where('comment', self::$comment)->where('is_out', 0)->whereHas('items', function ($query) {
+            $query->whereNotNull('name');
+        })->get();
+        $move = $moves->first();
+        // позиция, которой недостаточно
+        $def_item = $move->items->whereNotNull('name')->first();
+        // url
+        $url = $this->api_pref . "sklad_moves/$move->id/post";
+        // данные
+        $data = ["is_out" => 1];
+        $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, $data)->assertStatus(421)
+            ->assertJson([
+                "is_error" => true,
+            ]);
+        $this->assertTrue(
+            $this->response_has_error(
+                $response,
+                ['Недостаточно', $def_item->nomenklatura, $move->sklad_out, $def_item->name]
+            ),
+            "text error. we want [$def_item->nomenklatura], [$move->sklad_out], [$def_item->name], server sent " . $this->get_response_error($response)
+        );
+        // удаляем строку, содержащую неверную запись
+        SkladMoveItem::where('comment', self::$comment)->whereNotNull('name')->delete();
+    }
+
+    // отправляем все перемещения
+    public function testSendSkladMove()
+    {
+        // отправим все, кроме первого
+        $moves = SkladMove::where('comment', self::$comment)->where('is_out', 0)->orderBy('id')->get()->skip(1);
+        foreach ($moves as $move) {
+            // url
+            $url = $this->api_pref . "sklad_moves/$move->id/post";
+            // данные
+            $data = ["is_out" => 1];
+            $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, $data);
+            $response->assertStatus(202);
+            // try {
+            //     $response->assertStatus(202);
+            // } catch (\Throwable $th) {
+            //     dd($response);
+            // }
+            $response->assertJson([
+                "is_error" => false,
+                "data" => [
+                    "is_out" => 1
+                ]
+            ]);
+        }
+        //  проверим остатки
+        $this->testCheckRemainsAfterReceive();
+    }
+
+    // примем все перемещения
+    public function testReceiveSkladMove()
+    {
+        // отправим все, кроме первого
+        $moves = SkladMove::where('comment', self::$comment)->where('is_in', 0)->get();
+        foreach ($moves as $move) {
+            // url
+            $url = $this->api_pref . "sklad_moves/$move->id/post";
+            // данные
+            if ($move->is_out == 0) {
+                $data = ["is_active" => 1];
+            } else {
+                $data = ["is_in" => 1];
+            }
+            $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, $data);
+            $response->assertStatus(202);
+            $response->assertJson([
+                "is_error" => false,
+                "data" => [
+                    "is_out" => 1,
+                    "is_active" => 1,
+                    "is_in" => 1
+                ]
+            ]);
+        }
+        //  проверим остатки
+        $this->testCheckRemainsAfterReceive();
+    }
+
+    // TODO
+    // тест распроведения приходной накладной, из которой номенклатура была уже перемещена
+    // тест изменения позиции проведнной приходной накладной на увеличение кол-ва
+    // тест изменения позиции проведнной приходной накладной на уменьшение кол-ва
+    // тест изменения позиции проведенного перемещения без превышения остатков
+    // тест изменения позиции проведенного перемещения с превышением остатков
+    // тест выборки накладных с критериями вложенной фильтрации
+    // тест серийных номеров
+    // Производство
 
 
     // вычисляем остатки на установленную дату согласно внутренним регистрам (расчетная модель)
@@ -966,7 +1169,11 @@ class ApiTest extends TestCase
 
     private function get_response_error($response)
     {
-        return json_decode($response->getContent())->error[0];
+        try {
+            return json_decode($response->getContent())->error[0];
+        } catch (\Throwable $th) {
+            return null;
+        }
     }
 
 
