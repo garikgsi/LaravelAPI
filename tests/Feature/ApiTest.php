@@ -1,5 +1,9 @@
 <?php
 
+//
+// use phpunit for testing!
+//
+
 namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -25,6 +29,9 @@ use App\Production;
 use App\ProductionItem;
 use App\ProductionComponent;
 use App\ProductionReplace;
+use App\Recipe;
+use App\RecipeItem;
+use App\RecipeItemReplace;
 use App\Firm;
 use App\Kontragent;
 use Illuminate\Support\Str;
@@ -32,6 +39,7 @@ use App\TableTag;
 use PhpParser\Node\Stmt\TryCatch;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class ApiTest extends TestCase
 {
@@ -41,7 +49,7 @@ class ApiTest extends TestCase
     private static $name_pref = '___abp-';
     private static $comment = '___abp-';
     // добавляем тестовые номенклатуры
-    private $nomenklatura_count = 20;
+    private $nomenklatura_count = 50;
     // добавляем тестовые производители (дб больше 4)
     private $manufacturers_count = 5;
     // количество тестовых групп
@@ -61,6 +69,8 @@ class ApiTest extends TestCase
     private $keepers_count = 3;
     // кол-во приходных накладных
     private $receive_count = 5;
+    // кол-во производств
+    private $production_count = 20;
 
     // setUp
     protected function setUp(): void
@@ -102,7 +112,9 @@ class ApiTest extends TestCase
             Nomenklatura::class,
             Manufacturer::class, UserInfo::class,
             SkladReceive::class, SkladReceiveItem::class, Sklad::class,
-            Sotrudnik::class, SkladMove::class, SkladMoveItem::class
+            Sotrudnik::class, SkladMove::class, SkladMoveItem::class,
+            Production::class, ProductionItem::class, ProductionComponent::class,
+            Recipe::class, RecipeItem::class
         ];
         foreach ($tables as $table) {
             $table::where("comment", self::$comment)->forceDelete();
@@ -142,7 +154,7 @@ class ApiTest extends TestCase
                 "artikul" => Str::random(5), //"Артикул"
                 "price" => $this->faker->randomFloat(2), // "Цена без НДС"
                 "nds_id" => $this->nds->random(), //"Ставка НДС"
-                "is_usluga" => 0, //"Услуга"
+                "is_usluga" => $this->faker->numberBetween(0, 3) == 0 ? 1 : 0, //"Услуга" 25%
                 "comment" => self::$comment
             ];
             $response = $this->actingAs($this->admin_user, 'api')->json('POST', $this->api_pref . 'nomenklatura', $data);
@@ -1058,6 +1070,489 @@ class ApiTest extends TestCase
         $this->testCheckRemainsAfterReceive();
     }
 
+    // создание рецептур производства
+    public function testCreateRecepie()
+    {
+        // номенклатура для рецепта
+        $nomenklatura_for_recepie = Nomenklatura::where('comment', self::$comment)->get()->random();
+        // рецептура
+        $data = [
+            'comment' => self::$comment,
+            'name' => self::$name_pref . Str::random(10),
+            'nomenklatura_id' => $nomenklatura_for_recepie->id,
+            'items' => []
+        ];
+        // наполняем рецептуру
+        $nomenklatura_for_recepie_items = Nomenklatura::where('comment', self::$comment)->whereNotIn('id', [$nomenklatura_for_recepie->id])->get();
+        $recepie_items_count = rand(3, round($nomenklatura_for_recepie_items->count() / 2));
+        for ($i = 0; $i < $recepie_items_count; $i++) {
+            $data['items'][] = [
+                'comment' => self::$comment,
+                'nomenklatura_id' =>   $nomenklatura_for_recepie_items->random()->id,
+                'kolvo' => $this->faker->randomFloat(0, 1, 20)
+            ];
+        }
+        $url = $this->api_pref . "recipes";
+        $response = $this->actingAs($this->admin_user, 'api')->json('POST', $url, $data);
+        $response->assertStatus(200);
+        $response->assertJson([
+            "is_error" => false,
+            "count" => 1,
+        ]);
+        // данные проверим отдельно
+        $response_data = $this->response_data($response)->toArray();
+        $this->assertSame(count($data['items']), count($response_data['items']));
+    }
+
+    // создание производства
+    public function testCreateProductions()
+    {
+        for ($i = 0; $i < $this->production_count; $i++) {
+            // рецептура, которую будем собирать
+            $recipe = Recipe::where('comment', self::$comment)->first();
+            $orig_components = $recipe->items()->get()->mapWithKeys(function ($item) {
+                return [$item['nomeklatura_id'] => $item['kolvo']];
+            })->all();
+            // склад
+            $sklad = Sklad::where('comment', self::$comment)->get()->random();
+            // все фирмы
+            $firms = Firm::where('id', '>', 1)->get();
+            // кол-во выпускаемой продукции
+            $kolvo = rand(1, 10);
+            // данные производства
+            $data = [
+                'comment' => self::$comment,
+                'name' => self::$name_pref . Str::random(10),
+                'firm_id' => $firms->random()->id,
+                'sklad_id' => $sklad->id,
+                'recipe_id' => $recipe->id,
+                'kolvo' => $kolvo
+            ];
+            $url = $this->api_pref . "productions";
+            $response = $this->actingAs($this->admin_user, 'api')->json('POST', $url, $data);
+            $response->assertStatus(200);
+            $response->assertJson([
+                "is_error" => false,
+                "count" => 1,
+            ]);
+            // данные проверим отдельно
+            $response_data = $this->response_data($response)->toArray();
+            // созданное производство
+            $production = Production::find($response_data['id']);
+            // проверим что заполнены члены комиссии
+            $same_fields = ['commission_member1', 'commission_member2', 'commission_chairman'];
+            $orig_arr = [];
+            $test_arr = [];
+            foreach ($same_fields as $field) {
+                $orig_arr[$field] = $sklad->{$field};
+                $test_arr[$field] = $sklad->{$field};
+            }
+            $this->assertSame($orig_arr, $test_arr, "Члены комиссии не сохранены в производстве");
+            // номер документа
+            $this->assertTrue(!is_null($production->doc_num));
+            // проверим, что созданы изделия
+            $production_items = $production->items();
+            $this->assertSame($kolvo, $production_items->count(), "Не создались [$kolvo] изделия");
+            // проверим, что присвоились серийные номера и компоненты
+            foreach ($production_items as $production_item) {
+                // серийники
+                $this->assertTrue(!is_null($production_item->serial));
+                // компоненты
+                $test_components = $production_item->components()->get()->mapWithKeys(function ($item) {
+                    return [$item['nomeklatura_id'] => $item['kolvo']];
+                })->all();
+                $this->assertSame($orig_components, $test_components, "компоненты не созданы согласно рецептуре");
+            }
+        }
+    }
+
+    // Уменьшение количества готовых изделий в партии невозможно
+    public function testSubKolvoProductionItems()
+    {
+        $prod = Production::where('comment', self::$comment)->where('is_active', 0)->get()->where('kolvo', '>', 1)->random();
+        $data = $prod->only(['id', 'kolvo', 'firm_id', 'recipe_id', 'sklad_id', 'is_active', 'doc_date', 'doc_num']);
+        $data['kolvo'] = $prod->kolvo - 1;
+        $url = $this->api_pref . "productions/" . $prod->id;
+        $response = $this->actingAs($this->admin_user, 'api')->json('PUT', $url, $data);
+        $response->assertStatus(421);
+        $response->assertJson([
+            "is_error" => true,
+        ]);
+        $this->assertTrue(
+            $this->response_has_error(
+                $response,
+                ['Уменьшение количества готовых изделий в партии невозможно']
+            )
+        );
+    }
+
+    // Проводить можно только кладовщику или администратору
+    public function testSetActiveProductionCanOnlyKeeperOrAdmin()
+    {
+        // выбираем первое непроведенное перемещение
+        $production = Production::where('comment', self::$comment)->where('is_active', 0)->first();
+        // склады
+        $sklad = Sklad::find($production->sklad_id);
+        // получим складарей складов отправителя и получателя
+        $keeper = Sotrudnik::find($sklad->keeper_id)->user();
+        // пользователь без прав
+        $user = User::where('name', 'like', self::$name_pref . '%')->whereNotIn('id', [$this->admin_user->id, $keeper->id])->take(1)->first();
+        // url
+        $url = $this->api_pref . "productions/$production->id/post";
+        // данные
+        $data = ["is_active" => 1];
+        $response = $this->actingAs($user, 'api')->json('PATCH', $url, $data)->assertStatus(421)
+            ->assertJson([
+                "is_error" => true,
+            ]);
+        $this->assertTrue($this->response_has_error($response, ['Проводить можно только кладовщику или администратору']));
+    }
+
+    /**
+     * тест недостаточного количества при проведении производства
+     *
+     */
+    public function testNotEnoughtWhenSetActiveProduction()
+    {
+        // текущие остатки
+        $all_ostatki_by_sklad = $this->calcRemains();
+        // foreach ($all_ostatki_by_sklad as $ostatki_sklad_id => $ostatki_by_sklad) {
+        $productions = Production::where('comment', self::$comment)->where('is_active', 0)->get();
+        foreach ($productions as $production) {
+            // // получаем остатки по складу производства
+            if (isset($all_ostatki_by_sklad[$production->sklad_id])) {
+                $ostatki_by_sklad = $all_ostatki_by_sklad[$production->sklad_id];
+
+                // производимые изделия
+                $items = $production->items()->get();
+                // компоненты изделий (из рецептур, поэтому у всех одинаковые)
+                $components = $items->first()->components()->get();
+                // не достаточно на складе
+                $not_enough = [];
+                $need_kolvo = [];
+                // свернем массив компонент производства
+                foreach ($components as $component) {
+                    if ($component->component->is_usluga == 0) {
+                        // необходимое кол-во на партию
+                        $production_component_kolvo = $production->kolvo * $component->kolvo;
+                        if (isset($need_kolvo[$component->nomenklatura_id])) {
+                            $need_kolvo[$component->nomenklatura_id] += $production_component_kolvo;
+                        } else {
+                            $need_kolvo[$component->nomenklatura_id] = $production_component_kolvo;
+                        }
+                    }
+                }
+                // проверяем остатки
+                foreach ($need_kolvo as $component_nomenklatura_id => $component_kolvo) {
+                    if (isset($ostatki_by_sklad[$component_nomenklatura_id])) {
+                        if ($ostatki_by_sklad[$component_nomenklatura_id] < $component_kolvo) {
+                            $not_enough[$component_nomenklatura_id] = $component_kolvo - $ostatki_by_sklad[$component_nomenklatura_id];
+                        }
+                    } else {
+                        $not_enough[$component_nomenklatura_id] = $component_kolvo;
+                    }
+                }
+                // если недостаточно для производства
+                if (count($not_enough) > 0) {
+                    $remains_errors = ['Недостаточно'];
+                    // ошибки
+                    foreach ($not_enough as $not_enough_nomeklatura => $not_enough_kolvo) {
+                        $n = Nomenklatura::find($not_enough_nomeklatura);
+                        // $remains_errors[] = "(" . $n->id . ",u=" . $n->is_usluga . ")" . $n->short_title . " в количестве " . $not_enough_kolvo . " " . $n->edIsm;
+                        $remains_errors[] = $n->short_title . " в количестве " . $not_enough_kolvo . " " . $n->edIsm;
+                    }
+                    // пытаемся провести и сравниваем кол-во недостающих номенклатур
+                    $url = $this->api_pref . "productions/" . $production->id . "/post";
+                    $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, ['is_active' => 1]);
+                    $response->assertStatus(421);
+                    $response->assertJson([
+                        "is_error" => true,
+                    ]);
+                    $check_response = $this->response_has_error(
+                        $response,
+                        $remains_errors
+                    );
+                    // проверки прошли
+                    if ($check_response) {
+                        // Log::info("SUCCESS", [
+                        //     'url' => $url,
+                        //     'ответ сервера' => $this->get_response_error($response),
+                        //     'расчетные остатки' => $ostatki_by_sklad,
+                        //     'свертка кол-ва' => $need_kolvo,
+                        //     'недостаточное кол-во' => $not_enough,
+                        //     'ожидаемая ошибка' => implode(",", $remains_errors),
+                        //     'производство' => $production->only('id', 'kolvo', 'sklad_id'),
+                        // ]);
+                    } else {
+                        // остатки в регистрах
+                        $reg_ost = Sklad::find($production->sklad_id)->sklad_register()->get();
+                        $ost = $reg_ost->mapWithKeys(function ($item, $key) {
+                            return [$item['nomenklatura_id'] => $item['ou_kolvo']];
+                        })->all();
+                        $recepi = RecipeItem::where('recipe_id', $production->recipe_id)->get();
+                        $recept = $recepi->mapWithKeys(function ($item, $key) {
+                            return [$item['nomenklatura_id'] => $item['kolvo']];
+                        })->all();
+
+                        Log::info("FAIL", [
+                            'url' => $url,
+                            'ответ сервера' => $this->get_response_error($response),
+                            'расчетные остатки' => $ostatki_by_sklad,
+                            'свертка кол-ва' => $need_kolvo,
+                            'недостаточное кол-во' => $not_enough,
+                            'ожидаемая ошибка' => implode(",", $remains_errors),
+                            'производство' => $production->only('id', 'kolvo', 'sklad_id'),
+                            'рецептура' => $recept,
+                            'остатки в регистрах' => $ost
+                        ]);
+                    }
+                    $this->assertTrue(
+                        $check_response,
+                        "wrong error from request. we want [" . implode(",", $remains_errors) . "] but got [" . $this->get_response_error($response) . "]"
+                    );
+                    // return $production->id;
+                    break;
+                } else {
+                    continue;
+                }
+            }
+        }
+    }
+
+    /**
+     * тест создания замен, дополнений в производство и проведение с контролем количества
+     *
+     * возвращаем id производства для проведения
+     * @return int
+     */
+    public function testCreateReplacesForProduction(): int
+    {
+        // // производство
+        // $production = Production::find($production_id);
+        // текущие остатки
+        $all_ostatki_by_sklad = $this->calcRemains();
+        $productions = Production::where('comment', self::$comment)->where('is_active', 0)->get();
+        foreach ($productions as $production) {
+            // остаток на складе
+            if (isset($all_ostatki_by_sklad[$production->sklad_id])) {
+
+                $ostatki_na_sklade = $all_ostatki_by_sklad[$production->sklad_id];
+                // производимые изделия
+                $items = $production->items()->get();
+                // компоненты изделий (из рецептур, поэтому у всех одинаковые)
+                $components = $items->first()->components()->whereHas('component', function ($query) {
+                    $query->where('is_usluga', 0);
+                })->get();
+                // состав компонентов производства после замен
+                $production_components = [];
+                // остатки
+                $remains_after_active = $ostatki_na_sklade;
+                // посчитаем реальные остатки после проведения производства
+                foreach ($components as $component) {
+                    // проверим, чтобы не было услуг здесь
+                    $nomenklatura = Nomenklatura::find($component->nomenklatura_id);
+                    if ($nomenklatura->is_usluga == 0) {
+                        // необходимое кол-во на партию
+                        $production_component_kolvo = $production->kolvo * $component->kolvo;
+                        if (isset($remains_after_active[$component->nomenklatura_id])) {
+                            $remains_kolvo = abs($remains_after_active[$component->nomenklatura_id]);
+                            // кол-во в наличии пойдет на изготовление (в приоритете)
+                            $production_components[] = [
+                                'nomenklatura_id' => $component->nomenklatura_id,
+                                'kolvo' => $remains_kolvo > $production_component_kolvo ? $production_component_kolvo : $remains_after_active[$component->nomenklatura_id],
+                                'replaced' => false
+                            ];
+                            // уменьшаем остатки
+                            $remains_after_active[$component->nomenklatura_id] -= $production_component_kolvo;
+                        } else {
+                            $remains_after_active[$component->nomenklatura_id] = -$production_component_kolvo;
+                        }
+                    }
+                }
+                // все отрицательные остатки нужно раскидать по положительным остаткам
+                // дефицит
+                $deficit = collect($remains_after_active)->filter(function ($value, $key) {
+                    return $value < 0;
+                })->map(function ($value) {
+                    return abs($value);
+                });
+                // кол-во (штук) недостающих товаров
+                $sum_kolvo_deficit = $deficit->values()->sum();
+                // положительные остатки после проведения
+                $ostatki = collect($remains_after_active)->filter(function ($value, $key) {
+                    return $value > 10;
+                });
+                // кол-во (штук) остатков товаров
+                $sum_kolvo_ostatki = $ostatki->values()->sum();
+                // логи
+                Log::info("-START-", [
+                    'ostatki' => $ostatki,
+                    'deficit' => $deficit,
+                    'sum_kolvo_ostatki' => $sum_kolvo_ostatki,
+                    'sum_kolvo_deficit' => $sum_kolvo_deficit,
+                ]);
+                // все замены, которые мы планируем сделать в производстве
+                $replacements = [];
+                // не было замен на уровне рецептур
+                $has_recipe_replace = false;
+                // не было замен на уровне изделия
+                $has_item_replace = false;
+                // не было замен на уровне производства
+                $has_production_replace = false;
+                // остатков должно быть больше 3 наименований, должен быть дефицит и кол-во шт в остатках дб больше кол-ва штук в дефиците
+                if ($ostatki->count() > 3 && $deficit->count() > 1 && $sum_kolvo_ostatki > $sum_kolvo_deficit) {
+                    // массив остатков
+                    $remains = $ostatki->all();
+                    // идем по всему дефициту
+                    $deficit->each(function ($item, $key) use (&$has_production_replace, &$has_item_replace, &$has_recipe_replace, &$remains, &$production_components, $production, &$replacements, $items) {
+                        // дефицитная номенклатура
+                        $deficit_nomenklatura_id = $key;
+                        // всего по номенклатуре дефицита
+                        $deficit_nomenklatura_kolvo = $item;
+                        // заменяем пока дефицит по номенклатуре положительный
+                        while ($deficit_nomenklatura_kolvo > 0) {
+                            // фильтруем остатки от нулевых значений и выбираем случайный элемент остатков
+                            $r_nomenklatura_id = array_rand(array_filter($remains, function ($value, $key) {
+                                return $value > 0;
+                            }, ARRAY_FILTER_USE_BOTH));
+                            $r_ostatok = $remains[$r_nomenklatura_id];
+                            // лог остатков по итерациям
+                            Log::info("_ITERATION_", [
+                                'remains' => $remains,
+                            ]);
+                            // добавим замену в рецептуру
+                            if (!$has_item_replace) {
+                                // найдем строку рецептуры, которую заменяем
+                                $recipe_item = RecipeItem::where('recipe_id', $production->recipe_id)->where('nomenklatura_id', $deficit_nomenklatura_id)->first();
+                                // изделие
+                                $production_item = $items->random();
+                                // кол-во заменяемого
+                                $replace_kolvo = $r_ostatok >= $recipe_item->kolvo ? $recipe_item->kolvo : $r_ostatok;
+                                // добавляем замену
+                                $replacements[] = [
+                                    'production_id' => $production->id,
+                                    'component_id' => $production_item->id,
+                                    'nomenklatura_from_id' => $deficit_nomenklatura_id,
+                                    'nomenklatura_to_id' => $r_nomenklatura_id,
+                                    'kolvo_from' => 1,
+                                    'kolvo_to' => 1,
+                                    'save_to_recipe' => $this->faker->numberBetween(0, 1)
+                                ];
+                                // изменяем остаток
+                                $remains[$r_nomenklatura_id] -= $replace_kolvo;
+                                // добавляем компонент
+                                $production_components[] = [
+                                    'nomenklatura_id' => $r_nomenklatura_id,
+                                    'kolvo' => $replace_kolvo,
+                                    'replaced' => true
+                                ];
+                                // изменяем кол-во остатка дефицитной строки
+                                $deficit_nomenklatura_kolvo -= $replace_kolvo;
+                                // замену в изделии сделали
+                                $has_item_replace = true;
+                                // следующая итерация
+                                continue;
+                            }
+                            // если не было замен на уровне производства
+                            if (!$has_production_replace) {
+                                // кол-во заменяемого
+                                $replace_kolvo = $r_ostatok >= $deficit_nomenklatura_kolvo ? $deficit_nomenklatura_kolvo : $r_ostatok;
+                                // добавляем замену
+                                $replacements[] = [
+                                    'production_id' => $production->id,
+                                    'component_id' => 1,
+                                    'nomenklatura_from_id' => $deficit_nomenklatura_id,
+                                    'nomenklatura_to_id' => $r_nomenklatura_id,
+                                    'kolvo_from' => 1,
+                                    'kolvo_to' => 1,
+                                    'save_to_recipe' => $this->faker->numberBetween(0, 1)
+                                ];
+                                // изменяем остаток
+                                $remains[$r_nomenklatura_id] -= $replace_kolvo;
+                                // добавляем компонент
+                                $production_components[] = [
+                                    'nomenklatura_id' => $r_nomenklatura_id,
+                                    'kolvo' => $replace_kolvo,
+                                    'replaced' => true
+                                ];
+                                // изменяем кол-во остатка дефицитной строки
+                                $deficit_nomenklatura_kolvo -= $replace_kolvo;
+                                // замену в производстве сделали
+                                $has_production_replace = true;
+                                // следующая итерация
+                                continue;
+                            }
+                            // остальные замены на уровне замен в рецептуре
+
+                            // найдем строку рецептуры, которую заменяем
+                            $recipe_item = RecipeItem::where('recipe_id', $production->recipe_id)->where('nomenklatura_id', $deficit_nomenklatura_id)->get()->first();
+                            // необходимое кол-во для производства по строке рецептуры
+                            $recipe_item_kolvo_by_production = $recipe_item->kolvo * $production->kolvo;
+                            // делаем замену
+                            $recipe_replace = new RecipeItemReplace();
+                            $recipe_replace->fill([
+                                'comment' => self::$comment,
+                                'recipe_item_id' => $recipe_item->id,
+                                'nomenklatura_to_id' => $r_nomenklatura_id,
+                                'kolvo_from' => 1,
+                                'kolvo_to' => 1
+                            ])->save();
+                            // кол-во заменяемого
+                            $replace_kolvo = $r_ostatok > $recipe_item_kolvo_by_production ? $recipe_item_kolvo_by_production : $r_ostatok;
+                            // изменяем остаток
+                            $remains[$r_nomenklatura_id] -= $replace_kolvo;
+                            // добавляем компонент
+                            $production_components[] = [
+                                'nomenklatura_id' => $r_nomenklatura_id,
+                                'kolvo' => $replace_kolvo,
+                                'replaced' => true
+                            ];
+                            // изменяем кол-во остатка дефицитной строки
+                            $deficit_nomenklatura_kolvo -= $replace_kolvo;
+                            // замену в рецептуре сделали
+                            $has_recipe_replace = true;
+                        }
+                    });
+                    // если в ходе проверки не были сделаны замены на уровне рецептур и изделий - следующее производство
+                    if (!$has_item_replace || !$has_recipe_replace || !$has_recipe_replace) continue;
+                } else {
+                    continue;
+                }
+            } else {
+                continue;
+            }
+
+            // Log::info("_PRODUCTION ITOGS_", [
+            //     'replacements' => $replacements,
+            //     'production_components' => $production_components,
+            //     'deficit' => $deficit->toArray(),
+            //     'remains' => $remains,
+            //     'recept' => $recept,
+            //     'production' => ['id' => $production->id, 'kolvo' => $production->kolvo,]
+            // ]);
+
+            // если нашли такое производство - сохраним замены
+            $this->assertSame($has_item_replace && $has_recipe_replace && $has_recipe_replace, true, 'Не удалось обнаружить подходящее производство, запустите тест еще раз');
+            // сохраняем замены
+            $data = $production->toArray();
+            $data['items'] = $items->toArray();
+            $data['replaces'] = $replacements;
+            // пытаемся сохранить и сравниваем кол-во недостающих номенклатур
+            $url = $this->api_pref . "productions/" . $production->id;
+            $response = $this->actingAs($this->admin_user, 'api')->json('PUT', $url, $data);
+            $response->assertStatus(202);
+            $response->assertJson([
+                "is_error" => false,
+            ]);
+
+            // TODO
+            // наличие сохраненных замен для рецептур
+
+            // возвращаем id производства
+            return $production->id;
+        }
+    }
+
     // TODO
     // тест распроведения приходной накладной, из которой номенклатура была уже перемещена
     // тест изменения позиции проведнной приходной накладной на увеличение кол-ва
@@ -1066,7 +1561,6 @@ class ApiTest extends TestCase
     // тест изменения позиции проведенного перемещения с превышением остатков
     // тест выборки накладных с критериями вложенной фильтрации
     // тест серийных номеров
-    // Производство
 
 
     // вычисляем остатки на установленную дату согласно внутренним регистрам (расчетная модель)
@@ -1084,7 +1578,8 @@ class ApiTest extends TestCase
         foreach ($receives as $receive) {
             // добавим остатки в массив-регистр
             foreach ($receive->items as $item) {
-                $remains->push([
+                $nomenklatura = Nomenklatura::find($item->nomenklatura_id);
+                if ($nomenklatura->is_usluga == 0) $remains->push([
                     'document_type' => SkladReceive::class,
                     'document_id' => $receive->id,
                     'document_date' => $receive->doc_date,
@@ -1102,7 +1597,8 @@ class ApiTest extends TestCase
         foreach ($moves_out as $move_out) {
             // списываем
             foreach ($move_out->items as $item) {
-                $remains->push([
+                $nomenklatura = Nomenklatura::find($item->nomenklatura_id);
+                if ($nomenklatura->is_usluga == 0) $remains->push([
                     'document_type' => SkladMove::class,
                     'document_id' => $move_out->id,
                     'document_date' => $move_out->doc_date,
@@ -1120,7 +1616,8 @@ class ApiTest extends TestCase
         foreach ($moves_out as $move_out) {
             // приходуем
             foreach ($move_out->items as $item) {
-                $remains->push([
+                $nomenklatura = Nomenklatura::find($item->nomenklatura_id);
+                if ($nomenklatura->is_usluga == 0) $remains->push([
                     'document_type' => SkladMove::class,
                     'document_id' => $move_out->id,
                     'document_date' => $move_out->doc_date,
@@ -1135,6 +1632,43 @@ class ApiTest extends TestCase
         }
         // все проведенные производства
         $productions = Production::where('comment', self::$comment)->where('is_active', '=', 1)->get();
+        foreach ($productions as $production) {
+            // все произведенные изделия
+            $items = $production->items();
+            // списываем все компоненты
+            foreach ($items as $item) {
+                $components = $item->components();
+                foreach ($components as $component) {
+                    $nomenklatura = Nomenklatura::find($component->nomenklatura_id);
+                    if ($nomenklatura->is_usluga == 0) $remains->push([
+                        'document_type' => Production::class,
+                        'document_id' => $production->id,
+                        'document_date' => $production->doc_date,
+                        'sklad_id' => $production->sklad_id,
+                        'saldo' => 0,
+                        'nomenklatura_id' => $component->nomenklatura_id,
+                        'kolvo' => -$component->kolvo,
+                        'price' => $component->price,
+                        'summa' => $component->summa
+                    ]);
+                }
+                // если изделие собрано - оприходуем его
+                if ($item->is_producted == 1) {
+                    $nomenklatura = $production->recipes->nomenklatura;
+                    $remains->push([
+                        'document_type' => Production::class,
+                        'document_id' => $production->id,
+                        'document_date' => $production->doc_date,
+                        'sklad_id' => $production->sklad_id,
+                        'saldo' => 1,
+                        'nomenklatura_id' => $nomenklatura->id,
+                        'kolvo' => 1,
+                        'price' => $nomenklatura->avg_price,
+                        'summa' => $nomenklatura->avg_price
+                    ]);
+                }
+            }
+        }
 
         // проверяем остатки
         $nomenklatura_by_sklad = $remains

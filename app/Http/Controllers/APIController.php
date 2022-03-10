@@ -30,7 +30,6 @@ use App\Nomenklatura;
 
 use App\SkladReceiveItem;
 
-set_time_limit(0);
 
 // ЯЗЫК ЗАПРОСОВ К API
 

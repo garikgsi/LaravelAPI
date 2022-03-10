@@ -87,7 +87,7 @@ class Nomenklatura extends ABPTable
         $this->has_groups(true);
 
         // добавляем читателей
-        $this->appends = array_merge($this->appends, ['doc_title', 'manufacturer', 'ed_ism', 'okei', 'doc_type', 'ostatok', 'avg_price', 'price_with_nds']);
+        $this->appends = array_merge($this->appends, ['short_title', 'doc_title', 'manufacturer', 'ed_ism', 'okei', 'doc_type', 'ostatok', 'avg_price', 'price_with_nds']);
         // преобразователи типов
         $this->casts = array_merge([
             $this->casts, [
@@ -210,6 +210,20 @@ class Nomenklatura extends ABPTable
         // $model = $this->withTrashed()->find($this->attributes["id"]);
         $title = "";
         $fields = ["name", "artikul", "description", "part_num"];
+        // $m = $model;
+        foreach ($fields as $field) {
+            if (isset($n->$field) && $n->$field) $title .= $n->$field . " ";
+        }
+        $title = trim($title);
+        return $title;
+    }
+    // краткое наименование для отображение в ошибках и т.п.
+    public function getShortTitleAttribute()
+    {
+        // создадим экземпляр, если в запросе не будут указаны нужные поля
+        $n = Nomenklatura::withTrashed()->find($this->id);
+        $title = "";
+        $fields = ["name", "part_num"];
         // $m = $model;
         foreach ($fields as $field) {
             if (isset($n->$field) && $n->$field) $title .= $n->$field . " ";
