@@ -77,3 +77,4 @@ Route::get('/print/{document_id}', 'FormController@form');
 // Route::get('/phpinfo', function () {
 //     phpinfo();
 // });
+Route::get('/test', 'TestCcontroller@test');

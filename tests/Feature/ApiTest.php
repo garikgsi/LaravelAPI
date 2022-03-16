@@ -341,8 +341,12 @@ class ApiTest extends TestCase
             ]);
     }
 
-    // тест поиска, сортировки, лимита, смещения
-    //      Route::get('/{table}?fields=name,id&order=name,desc&search={test}&limit={limit}&offset={offset}', 'APIController@show')->middleware('auth:api');;
+    /**
+     * тест поиска, сортировки, лимита, смещения
+     * Route::get('/{table}?fields=name,id&order=name,desc&search={test}&limit={limit}&offset={offset}', 'APIController@show')->middleware('auth:api');;
+     *
+     * @return void
+     */
     public function testSearch()
     {
         $limit = 15;
@@ -365,8 +369,12 @@ class ApiTest extends TestCase
         $this->assertSame($data, $response_data);
     }
 
-    // тест получения различных форматов данных
-    //      Route::get('/{table}?odata={odata}', 'APIController@show')->middleware('auth:api');;
+    /**
+     * test тест получения различных форматов данных
+     * Route::get('/{table}?odata={odata}', 'APIController@show')->middleware('auth:api');;
+     *
+     * @return void
+     */
     public function testGetFormats()
     {
         $formats = [NULL, 'full', 'data', 'model', 'count', 'list'];
@@ -408,8 +416,12 @@ class ApiTest extends TestCase
         }
     }
 
-    // проверка выдачи удаленных записей
-    //      Route::get('/{table}?trashed=1', 'APIController@show')->middleware('auth:api');;
+    /**
+     * test проверка выдачи удаленных записей
+     * Route::get('/{table}?trashed=1', 'APIController@show')->middleware('auth:api');;
+     *
+     * @return void
+     */
     public function testGetTrashed()
     {
         $trashed = [NULL, true, false, 1, 0];
@@ -434,8 +446,12 @@ class ApiTest extends TestCase
         }
     }
 
-    // проверка сортировки по группам
-    //      Route::get('/{table}?tags=tag1,tag2', 'APIController@show')->middleware('auth:api');;
+    /**
+     * test проверка сортировки по группам
+     * Route::get('/{table}?tags=tag1,tag2', 'APIController@show')->middleware('auth:api');;
+     *
+     * @return void
+     */
     public function testGetGroups()
     {
         // группы которые назначены номенклатурам
@@ -453,7 +469,11 @@ class ApiTest extends TestCase
         $this->assertSame($nomenklatura, $response_data);
     }
 
-    // создаем сотрудников
+    /**
+     * test создаем сотрудников
+     *
+     * @return void
+     */
     public function testCreateEmployees()
     {
         for ($i = 0; $i < $this->keepers_count; $i++) {
@@ -476,7 +496,11 @@ class ApiTest extends TestCase
         }
     }
 
-    // привязываем сотрудников к пользователям
+    /**
+     * test привязываем сотрудников к пользователям
+     *
+     * @return void
+     */
     public function testUpdateUserInfo()
     {
         $keepers_count = $this->keepers_count;
@@ -537,7 +561,11 @@ class ApiTest extends TestCase
         $this->assertTrue($this->response_has_error($user_info_response, ['уже закреплен за пользователем', $current_user->email]), "diff error: we want $current_user->email, server said " . $this->get_response_error($user_info_response));
     }
 
-    // тест создания складов, пользователей-кладовщиков
+    /**
+     * test тест создания складов, пользователей-кладовщиков
+     *
+     * @return void
+     */
     public function testCreateSkladInfrastructure()
     {
         $emloyers = Sotrudnik::where('comment', self::$comment)->get();
@@ -565,7 +593,11 @@ class ApiTest extends TestCase
     }
 
 
-    // проверка добавления документов
+    /**
+     * test проверка добавления документов
+     *
+     * @return void
+     */
     public function testCreateReceiveDocuments()
     {
         // вся номенклатура
@@ -657,8 +689,12 @@ class ApiTest extends TestCase
         }
     }
 
-    // проверка нулевых остатков по всем складам - до проведения документов
-    //     Route::get('/{table}?scope=stock_balance.9, - добавить в запрос scope. Параметры передаются через точки, скопы разделяются запятыми
+    /**
+     * test проверка нулевых остатков по всем складам - до проведения документов
+     * Route::get('/{table}?scope=stock_balance.9, - добавить в запрос scope. Параметры передаются через точки, скопы разделяются запятыми
+     *
+     * @return void
+     */
     public function testCheckNullRemains()
     {
         // все склады
@@ -675,7 +711,11 @@ class ApiTest extends TestCase
         }
     }
 
-    // проверяем проведение документа пользователем не обладающим правами
+    /**
+     * test проверяем проведение документа пользователем не обладающим правами
+     *
+     * @return void
+     */
     public function testCheckPermissionsToSetActiveDocument()
     {
         // поступления
@@ -697,7 +737,11 @@ class ApiTest extends TestCase
         $this->assertTrue($this->response_has_error($response, ['Приходовать накладные может только кладовщик или администратор']));
     }
 
-    // проводим от имени кладовщика
+    /**
+     * test проводим от имени кладовщика
+     *
+     * @return void
+     */
     public function testKeeperSetActiveDocuments()
     {
         // поступления
@@ -718,8 +762,12 @@ class ApiTest extends TestCase
             ]);
     }
 
-    // проводим документы от имени администратора
-    // PATCH /api/v1/{table_name}/{N}/post - проводим документ с id=N в таблице table_name. В запросе необходимо передать массив полей для проведения (в моделе должны быть отмечены признаком "post"=>true). В ответе count сервер вернет измененную запись
+    /**
+     * test проводим документы от имени администратора
+     * PATCH /api/v1/{table_name}/{N}/post - проводим документ с id=N в таблице table_name. В запросе необходимо передать массив полей для проведения (в моделе должны быть отмечены признаком "post"=>true). В ответе count сервер вернет измененную запись
+     *
+     * @return void
+     */
     public function testSetActiveDocuments()
     {
         $remains = collect([]);
@@ -740,7 +788,11 @@ class ApiTest extends TestCase
         }
     }
 
-    // проверяем остатки после прихода (дата не важна)
+    /**
+     * test проверяем остатки после прихода (дата не важна)
+     *
+     * @return void
+     */
     public function testCheckRemainsAfterReceive()
     {
         // получим остатки расчетной модели
@@ -761,7 +813,11 @@ class ApiTest extends TestCase
         }
     }
 
-    // тест создания перемещения с одинаковыми складами отправлени и получения
+    /**
+     * test тест создания перемещения с одинаковыми складами отправлени и получения
+     *
+     * @return void
+     */
     public function testCreateEqualInOutSkladMove()
     {
         // все фирмы
@@ -810,7 +866,11 @@ class ApiTest extends TestCase
         // }
     }
 
-    // создадим перемещение по складам
+    /**
+     * test создадим перемещение по складам
+     *
+     * @return void
+     */
     public function testCreateSkladMove()
     {
         // текущие остатки
@@ -876,7 +936,11 @@ class ApiTest extends TestCase
         }
     }
 
-    // проверка проведения перемещения ни кладовщиком ни админом
+    /**
+     * test проверка проведения перемещения ни кладовщиком ни админом
+     *
+     * @return void
+     */
     public function testPermissionsSetActiveSkladMove()
     {
         // выбираем первое непроведенное перемещение
@@ -900,7 +964,11 @@ class ApiTest extends TestCase
         $this->assertTrue($this->response_has_error($response, ['Отправлять(проводить) со склада отправления может только кладовщик склада отправления или администратор']));
     }
 
-    // проверка полного проведения перемещения ни кладовщиком отправления
+    /**
+     * test проверка полного проведения перемещения ни кладовщиком отправления
+     *
+     * @return void
+     */
     public function testPermissionsFullSetActiveSkladMoveByKeeper()
     {
         // выбираем первое непроведенное перемещение
@@ -920,7 +988,11 @@ class ApiTest extends TestCase
         $this->assertTrue($this->response_has_error($response, ['Проводить и распроводить перемещение целиком может только администратор']));
     }
 
-    // попытка оприходования на склад получения без проведения со склада отправления
+    /**
+     * test попытка оприходования на склад получения без проведения со склада отправления
+     *
+     * @return void
+     */
     public function testPermissionsSetInWithoutOut()
     {
         // выбираем первое непроведенное перемещение
@@ -940,7 +1012,11 @@ class ApiTest extends TestCase
         $this->assertTrue($this->response_has_error($response, ['Принимать(проводить) на склад получения можно только после отправки(проведения) со склада отправления']));
     }
 
-    // Отправлять(проводить) со склада отправления может только кладовщик склада отправления или администратор
+    /**
+     * test Отправлять(проводить) со склада отправления может только кладовщик склада отправления или администратор
+     *
+     * @return void
+     */
     public function testCheckSendFromSkladOutOnlyKeeperOrAdmin()
     {
         // выбираем первое непроведенное перемещение
@@ -962,7 +1038,11 @@ class ApiTest extends TestCase
         $this->assertTrue($this->response_has_error($response, ['Отправлять(проводить) со склада отправления может только кладовщик склада отправления или администратор']));
     }
 
-    // Принимать(проводить) на склад получения может только кладовщик склада получения или администратор
+    /**
+     * test Принимать(проводить) на склад получения может только кладовщик склада получения или администратор
+     *
+     * @return void
+     */
     public function testCheckReceiveToSkladInOnlyKeeperOrAdmin()
     {
         // выбираем первое непроведенное перемещение
@@ -984,7 +1064,11 @@ class ApiTest extends TestCase
         $this->assertTrue($this->response_has_error($response, ['Принимать(проводить) на склад получения может только кладовщик склада получения или администратор']));
     }
 
-    // SkladMove отправляем со склада c количеством, превышающим остатки
+    /**
+     * test SkladMove отправляем со склада c количеством, превышающим остатки
+     *
+     * @return void
+     */
     public function testSendSkladMoveWithWrongKolvo()
     {
         // выбираем первое непроведенное перемещение cодержащее запись с ошибочным кол-вом
@@ -1013,7 +1097,11 @@ class ApiTest extends TestCase
         SkladMoveItem::where('comment', self::$comment)->whereNotNull('name')->delete();
     }
 
-    // отправляем все перемещения
+    /**
+     * test отправляем все перемещения
+     *
+     * @return void
+     */
     public function testSendSkladMove()
     {
         // отправим все, кроме первого
@@ -1041,7 +1129,11 @@ class ApiTest extends TestCase
         $this->testCheckRemainsAfterReceive();
     }
 
-    // примем все перемещения
+    /**
+     * test примем все перемещения
+     *
+     * @return void
+     */
     public function testReceiveSkladMove()
     {
         // отправим все, кроме первого
@@ -1070,7 +1162,11 @@ class ApiTest extends TestCase
         $this->testCheckRemainsAfterReceive();
     }
 
-    // создание рецептур производства
+    /**
+     * test создание рецептур производства
+     *
+     * @return void
+     */
     public function testCreateRecepie()
     {
         // номенклатура для рецепта
@@ -1104,12 +1200,16 @@ class ApiTest extends TestCase
         $this->assertSame(count($data['items']), count($response_data['items']));
     }
 
-    // создание производства
+    /**
+     * test создание производства
+     *
+     * @return void
+     */
     public function testCreateProductions()
     {
         for ($i = 0; $i < $this->production_count; $i++) {
             // рецептура, которую будем собирать
-            $recipe = Recipe::where('comment', self::$comment)->first();
+            $recipe = Recipe::where('comment', self::$comment)->get()->random();
             $orig_components = $recipe->items()->get()->mapWithKeys(function ($item) {
                 return [$item['nomeklatura_id'] => $item['kolvo']];
             })->all();
@@ -1166,7 +1266,11 @@ class ApiTest extends TestCase
         }
     }
 
-    // Уменьшение количества готовых изделий в партии невозможно
+    /**
+     * Уменьшение количества готовых изделий в партии невозможно
+     *
+     * @return void
+     */
     public function testSubKolvoProductionItems()
     {
         $prod = Production::where('comment', self::$comment)->where('is_active', 0)->get()->where('kolvo', '>', 1)->random();
@@ -1186,7 +1290,11 @@ class ApiTest extends TestCase
         );
     }
 
-    // Проводить можно только кладовщику или администратору
+    /**
+     * Проводить можно только кладовщику или администратору
+     *
+     * @return void
+     */
     public function testSetActiveProductionCanOnlyKeeperOrAdmin()
     {
         // выбираем первое непроведенное перемещение
@@ -1305,6 +1413,7 @@ class ApiTest extends TestCase
                             'рецептура' => $recept,
                             'остатки в регистрах' => $ost
                         ]);
+                        // dd(1);
                     }
                     $this->assertTrue(
                         $check_response,
@@ -1331,7 +1440,11 @@ class ApiTest extends TestCase
         // $production = Production::find($production_id);
         // текущие остатки
         $all_ostatki_by_sklad = $this->calcRemains();
+        // все производства
         $productions = Production::where('comment', self::$comment)->where('is_active', 0)->get();
+        // результирующее производство
+        $production_id = 1;
+        // ищем подходящее производство
         foreach ($productions as $production) {
             // остаток на складе
             if (isset($all_ostatki_by_sklad[$production->sklad_id])) {
@@ -1385,12 +1498,12 @@ class ApiTest extends TestCase
                 // кол-во (штук) остатков товаров
                 $sum_kolvo_ostatki = $ostatki->values()->sum();
                 // логи
-                Log::info("-START-", [
-                    'ostatki' => $ostatki,
-                    'deficit' => $deficit,
-                    'sum_kolvo_ostatki' => $sum_kolvo_ostatki,
-                    'sum_kolvo_deficit' => $sum_kolvo_deficit,
-                ]);
+                // Log::info("-START-", [
+                //     'ostatki' => $ostatki,
+                //     'deficit' => $deficit,
+                //     'sum_kolvo_ostatki' => $sum_kolvo_ostatki,
+                //     'sum_kolvo_deficit' => $sum_kolvo_deficit,
+                // ]);
                 // все замены, которые мы планируем сделать в производстве
                 $replacements = [];
                 // не было замен на уровне рецептур
@@ -1417,27 +1530,31 @@ class ApiTest extends TestCase
                             }, ARRAY_FILTER_USE_BOTH));
                             $r_ostatok = $remains[$r_nomenklatura_id];
                             // лог остатков по итерациям
-                            Log::info("_ITERATION_", [
-                                'remains' => $remains,
-                            ]);
+                            // Log::info("_ITERATION_", [
+                            //     'remains' => $remains,
+                            // ]);
                             // добавим замену в рецептуру
                             if (!$has_item_replace) {
                                 // найдем строку рецептуры, которую заменяем
                                 $recipe_item = RecipeItem::where('recipe_id', $production->recipe_id)->where('nomenklatura_id', $deficit_nomenklatura_id)->first();
                                 // изделие
                                 $production_item = $items->random();
+                                // найдем компонент, который заменяем
+                                $production_component = ProductionComponent::where('production_item_id', $production_item->id)->where('nomenklatura_id', $deficit_nomenklatura_id)->get()->last();
                                 // кол-во заменяемого
-                                $replace_kolvo = $r_ostatok >= $recipe_item->kolvo ? $recipe_item->kolvo : $r_ostatok;
+                                $replace_kolvo = $r_ostatok >= $production_component->kolvo ? $production_component->kolvo : $r_ostatok;
                                 // добавляем замену
+                                $save_to_recipe = $this->faker->numberBetween(0, 1);
                                 $replacements[] = [
                                     'production_id' => $production->id,
-                                    'component_id' => $production_item->id,
+                                    'component_id' => $production_component->id,
                                     'nomenklatura_from_id' => $deficit_nomenklatura_id,
                                     'nomenklatura_to_id' => $r_nomenklatura_id,
                                     'kolvo_from' => 1,
                                     'kolvo_to' => 1,
-                                    'save_to_recipe' => $this->faker->numberBetween(0, 1)
+                                    'save_to_recipe' => $save_to_recipe
                                 ];
+
                                 // изменяем остаток
                                 $remains[$r_nomenklatura_id] -= $replace_kolvo;
                                 // добавляем компонент
@@ -1458,6 +1575,7 @@ class ApiTest extends TestCase
                                 // кол-во заменяемого
                                 $replace_kolvo = $r_ostatok >= $deficit_nomenklatura_kolvo ? $deficit_nomenklatura_kolvo : $r_ostatok;
                                 // добавляем замену
+                                $save_to_recipe = $this->faker->numberBetween(0, 1);
                                 $replacements[] = [
                                     'production_id' => $production->id,
                                     'component_id' => 1,
@@ -1465,8 +1583,9 @@ class ApiTest extends TestCase
                                     'nomenklatura_to_id' => $r_nomenklatura_id,
                                     'kolvo_from' => 1,
                                     'kolvo_to' => 1,
-                                    'save_to_recipe' => $this->faker->numberBetween(0, 1)
+                                    'save_to_recipe' => $save_to_recipe
                                 ];
+
                                 // изменяем остаток
                                 $remains[$r_nomenklatura_id] -= $replace_kolvo;
                                 // добавляем компонент
@@ -1488,6 +1607,9 @@ class ApiTest extends TestCase
                             $recipe_item = RecipeItem::where('recipe_id', $production->recipe_id)->where('nomenklatura_id', $deficit_nomenklatura_id)->get()->first();
                             // необходимое кол-во для производства по строке рецептуры
                             $recipe_item_kolvo_by_production = $recipe_item->kolvo * $production->kolvo;
+                            $kolvo_to = $this->faker->numberBetween(0, 3) == 0 ? 0.5 : 1;
+                            // необходимое кол-во для замены по строке рецептуры
+                            $recipe_item_kolvo_by_production = $recipe_item->kolvo * $kolvo_to * $production->kolvo;
                             // делаем замену
                             $recipe_replace = new RecipeItemReplace();
                             $recipe_replace->fill([
@@ -1495,7 +1617,7 @@ class ApiTest extends TestCase
                                 'recipe_item_id' => $recipe_item->id,
                                 'nomenklatura_to_id' => $r_nomenklatura_id,
                                 'kolvo_from' => 1,
-                                'kolvo_to' => 1
+                                'kolvo_to' => $kolvo_to
                             ])->save();
                             // кол-во заменяемого
                             $replace_kolvo = $r_ostatok > $recipe_item_kolvo_by_production ? $recipe_item_kolvo_by_production : $r_ostatok;
@@ -1522,10 +1644,15 @@ class ApiTest extends TestCase
                 continue;
             }
 
+            $recepi = RecipeItem::where('recipe_id', $production->recipe_id)->get();
+            $recept = $recepi->mapWithKeys(function ($item, $key) {
+                return [$item['nomenklatura_id'] => $item['kolvo']];
+            })->all();
             // Log::info("_PRODUCTION ITOGS_", [
             //     'replacements' => $replacements,
             //     'production_components' => $production_components,
             //     'deficit' => $deficit->toArray(),
+            //     'ostatki_start' => $ostatki->all(),
             //     'remains' => $remains,
             //     'recept' => $recept,
             //     'production' => ['id' => $production->id, 'kolvo' => $production->kolvo,]
@@ -1545,11 +1672,46 @@ class ApiTest extends TestCase
                 "is_error" => false,
             ]);
 
-            // TODO
-            // наличие сохраненных замен для рецептур
+            // наличие сохраненных замен для производства
+            foreach ($replacements as $replace) {
+                if ($replace['save_to_recipe'] == 1) {
+                    $this->assertSame(
+                        // ProductionReplace::where('production_id', $production_id)->where('component_id', $replace['component_id'])->where('nomenklatura_from_id', $replace['nomenklatura_from_id'])->where('nomenklatura_to_id', $replace['nomenklatura_to_id'])->count(),
+                        RecipeItemReplace::where('comment', '<>', self::$comment)->where('nomenklatura_to_id', $replace['nomenklatura_to_id'])->count(),
+                        1,
+                        "Не сохранилась замена в рецептуре (recipe_item_replaces)"
+                    );
+                }
+            }
 
             // возвращаем id производства
-            return $production->id;
+            $production_id = $production->id;
+            break;
+        }
+        return $production_id;
+    }
+
+    /**
+     * тест проведения производства с подготовленными заменами
+     *
+     * @depends testCreateReplacesForProduction
+     * @param  int $production_id
+     * @return void
+     */
+    public function testSetActiveProductionWithReplaces(int $production_id)
+    {
+        if ($production_id > 1) {
+            // пытаемся провести и сравниваем кол-во недостающих номенклатур
+            $url = $this->api_pref . "productions/" . $production_id . "/post";
+            $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, ['is_active' => 1]);
+            try {
+                $response->assertStatus(202);
+            } catch (\Exception $e) {
+                dd($production_id, $response);
+            }
+            $response->assertJson([
+                "is_error" => false,
+            ]);
         }
     }
 

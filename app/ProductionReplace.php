@@ -3,6 +3,7 @@
 namespace App;
 
 use App\ABPTable;
+use App\ProductionComponent;
 
 class ProductionReplace extends ABPTable
 {
@@ -29,21 +30,23 @@ class ProductionReplace extends ABPTable
     }
 
     // производство
-    function production()
+    public function production()
     {
         return $this->belongsTo('App\Production', 'production_id', 'id');
     }
 
     // заменяемая номенклатура
-    function replace_from()
+    public function replace_from()
     {
         return $this->belongsTo('App\Nomenklatura', 'nomenklatura_from_id');
     }
     // замещающая  номенклатура
-    function replace_to()
+    public function replace_to()
     {
         return $this->belongsTo('App\Nomenklatura', 'nomenklatura_to_id');
     }
+
+
 
     // читатели
     // выдаем заменяемую номенклатуру

@@ -43,7 +43,7 @@ class SkladRegister extends ABPTable
     }
 
     // остаток номенклатуры по складу на дату
-    public function ostatok($sklad_id, $nomenklatura_id, $date = 'now')
+    public function ostatok($sklad_id, $nomenklatura_id, $date = 'now', $with_lock = 'false')
     {
         // $ost = $this->where('sklad_id',$sklad_id)
         //             ->where('nomenklatura_id',$nomenklatura_id)
@@ -54,9 +54,11 @@ class SkladRegister extends ABPTable
         //             ->sum('kolvo');
         $ost = $this->where('sklad_id', $sklad_id)
             ->where('nomenklatura_id', $nomenklatura_id)
-            ->whereDate('ou_date', '<=', $date == 'now' ? date("Y-m-d") : $date)
-            // ->dd();
-            ->sum('ou_kolvo');
+            ->whereDate('ou_date', '<=', $date == 'now' ? date("Y-m-d") : $date);
+        if ($with_lock) $ost->lockForUpdate();
+        // $ost->dd();
+
+        $ost = $ost->sum('ou_kolvo');
         // $ost = $this->where('sklad_id',$sklad_id)
         //             ->where('nomenklatura_id',$nomenklatura_id)
         //             ->whereDate('doc_date', '<=', $date=='now' ? date("Y-m-d") : $date )
@@ -219,6 +221,10 @@ class SkladRegister extends ABPTable
                     break;
                 case "App\SkladmanufactureItem": {
                         return "Производство";
+                    }
+                    break;
+                case "App\Act": {
+                        return "Реализация";
                     }
                     break;
             }
