@@ -16,6 +16,7 @@ use App\Common\ABPResponse;
 use App\Common\ABPStorage;
 use Exception;
 use Illuminate\Support\Facades\Log;
+use App\Exceptions\TriggerException;
 
 
 use App\File;
@@ -29,7 +30,6 @@ use App\Nomenklatura;
 
 use App\SkladReceiveItem;
 
-set_time_limit(0);
 
 // ЯЗЫК ЗАПРОСОВ К API
 
@@ -481,6 +481,10 @@ class APIController extends Controller
                             $save_result = $this_model->save_recursive($request, $data, $mod_type);
                             return $save_result;
                         });
+                    } catch (TriggerException $e) {
+                        $errors[] = $e->getMessage();
+                        return $this->response->set_err($e->getMessage(), 421)->response();
+                        // return $e->response();
                     } catch (Exception $e) {
                         return $this->response->exception($e)->response();
                     }

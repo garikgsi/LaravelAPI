@@ -4,6 +4,7 @@ namespace App\Triggers;
 
 use App\UserInfo;
 use Illuminate\Support\Facades\Auth;
+use App\Exceptions\TriggerException;
 
 
 class UserInfoObserver
@@ -26,7 +27,8 @@ class UserInfoObserver
                             $msg = 'Сотрудник ' . $msg;
                         };
                 }
-                abort(421, $msg);
+                throw new TriggerException($msg);
+                // abort(421, $msg);
                 return false;
             }
         }

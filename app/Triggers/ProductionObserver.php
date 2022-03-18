@@ -6,8 +6,14 @@ use App\Production;
 use App\ProductionItem;
 use App\ProductionComponent;
 use App\SkladRegister;
-use Illuminate\Support\Facades\Auth;
 use App\Nomenklatura;
+use App\RecipeItem;
+use App\RecipeItemReplace;
+use App\ProductionReplace;
+
+use Illuminate\Support\Facades\Auth;
+use App\Exceptions\TriggerException;
+use Illuminate\Support\Facades\Log;
 
 
 class ProductionObserver
@@ -38,6 +44,70 @@ class ProductionObserver
     // измененные значения
     private $new = [];
 
+    // кэш остатков
+    private $cache_remains = [];
+
+    /**
+     * Получаем остатки из регистра накопления и сохраняем в кэш
+     *
+     * @param  Production $p
+     * @param  int $nomenklatura_id
+     * @return array [string title, string ed_ism, boolean is_usluga, float remains, float avg_price]
+     */
+    private function remains(Production $p, int $nomenklatura_id): array
+    {
+        if (!isset($this->cache_remains[$nomenklatura_id])) {
+            $n = Nomenklatura::find($nomenklatura_id);
+            if ($n) {
+                $this->cache_remains[$nomenklatura_id] = [
+                    'title' => $n->short_title,
+                    'ed_ism' => $n->edIsm,
+                    'avg_price' => $n->avg_price
+                ];
+                if ($n->is_usluga == 1) {
+                    $this->cache_remains[$nomenklatura_id]['is_usluga'] = true;
+                } else {
+                    $reg = new SkladRegister;
+                    $this->cache_remains[$nomenklatura_id]['is_usluga'] = false;
+                    $this->cache_remains[$nomenklatura_id]['remains'] = $reg->ostatok($p->sklad_id, $nomenklatura_id, 'now', true);
+                }
+            } else {
+                throw new TriggerException("#PO. Не удается найти номенклатуру $nomenklatura_id");
+            }
+        }
+        return $this->cache_remains[$nomenklatura_id];
+    }
+    /**
+     * Очистка кэша с остатками
+     *
+     * @return void
+     */
+    private function clear_remains()
+    {
+        $this->cache_remains = [];
+    }
+    /**
+     * Уменьшаем остатки $nomenklatura_id в кэше на $kolvo
+     *
+     * @param  mixed $nomenklatura_id
+     * @param  mixed $kolvo
+     * @return null | array [string title, string ed_ism, boolean is_usluga, float remains, float avg_price]
+     */
+    private function sub_remains(int $nomenklatura_id, float $kolvo): array|null
+    {
+        if (isset($this->cache_remains[$nomenklatura_id])) {
+            if (!$this->cache_remains[$nomenklatura_id]['is_usluga']) {
+                if ($kolvo > $this->cache_remains[$nomenklatura_id]['remains']) {
+                    return null;
+                } else {
+                    $this->cache_remains[$nomenklatura_id]['remains'] -= $kolvo;
+                }
+            }
+            return $this->cache_remains[$nomenklatura_id];
+        } else {
+            return null;
+        }
+    }
 
     public function creating(Production $p)
     {
@@ -75,6 +145,8 @@ class ProductionObserver
 
     public function updating(Production $p)
     {
+        $debug = true;
+
         $this->set_vars($p);
 
         // изменяется количество
@@ -84,7 +156,8 @@ class ProductionObserver
             if ($old_kolvo != $new_kolvo) {
                 // если проведено - сначало надо распровести
                 if ($p->getOriginal('is_active') == 1) {
-                    abort(421, '#PO.Для изменения количества необходимо сначала распровести производство');
+                    throw new TriggerException('#PO.Для изменения количества необходимо сначала распровести производство');
+                    // abort(421, '#PO.Для изменения количества необходимо сначала распровести производство');
                     return false;
                 } else {
                     // на сколько увеличивается кол-во
@@ -95,7 +168,8 @@ class ProductionObserver
                             $this->add_item($p);
                         }
                     } else {
-                        abort(421, '#PO.Уменьшение количества готовых изделий в партии невозможно');
+                        throw new TriggerException('#PO.Уменьшение количества готовых изделий в партии невозможно');
+                        // abort(421, '#PO.Уменьшение количества готовых изделий в партии невозможно');
                         return false;
                     }
                 }
@@ -105,7 +179,8 @@ class ProductionObserver
         // изменяется рецептура
         if ($p->isDirty('recipe_id')) {
             if ($p->getOriginal('is_active') == 1) {
-                abort(421, '#PO.Для изменения рецептуры необходимо сначала распровести производство');
+                throw new TriggerException('#PO.Для изменения рецептуры необходимо сначала распровести производство');
+                // abort(421, '#PO.Для изменения рецептуры необходимо сначала распровести производство');
                 return false;
             }
         }
@@ -113,7 +188,8 @@ class ProductionObserver
         // изменяется склад
         if ($p->isDirty('sklad_id')) {
             if ($p->getOriginal('is_active') == 1) {
-                abort(421, '#PO.Для изменения склада необходимо сначала распровести производство');
+                throw new TriggerException('#PO.Для изменения склада необходимо сначала распровести производство');
+                // abort(421, '#PO.Для изменения склада необходимо сначала распровести производство');
                 return false;
             }
         }
@@ -122,7 +198,8 @@ class ProductionObserver
         if ($p->isDirty('is_active') && $p->is_active == 0) {
             $check = $this->check_unactive($p, "Распровести");
             if (!$check["can"]) {
-                abort(421, "#PO." . implode(", ", $check["err"]));
+                throw new TriggerException("#PO." . implode(", ", $check["err"]));
+                // abort(421, "#PO." . implode(", ", $check["err"]));
                 return false;
             }
         }
@@ -131,266 +208,299 @@ class ProductionObserver
         if ($p->isDirty('is_active') && $p->is_active == 1) {
             // распроводить по складам могут только кладовщики
             if ($this->is_keeper || $this->is_admin) {
-                // нехватка количества
-                $deficit = [];
-                // цикл по кол-ву изготавливаемых изделий
-                $items = $p->items;
-                foreach ($items as $item) {
-                    // себестоимость изделия
-                    $prime_cost = 0;
-                    // получим список компонентов
-                    $components = $item->components;
-                    foreach ($components as $component) {
-                        // осталось списать $kolvo
-                        $kolvo = floatVal($component->kolvo);
-                        // уже проверенная номенклатура
-                        $checked_ids = [];
-                        // все замены компонента
-                        $replacements = [];
-                        // номенклатуры, которые уже вошли в замены
-                        $replacement_ids = [];
-                        // пытаемся найти замены для компонента
-                        $component_replacements = $component->replaces;
-                        // если есть замены на уровне компонента
-                        // var_dump($component_replacements);
-                        // if ($component_replacements->count() > 0) dd($component_replacements);
-                        if ($component_replacements) {
-                            foreach ($component_replacements as $cr) {
-                                if (!in_array($cr->nomenklatura_to_id, $replacement_ids)) {
-                                    $replacements[] = ["nomenklatura_id" => $cr->nomenklatura_to_id, "kolvo_from" => $cr->kolvo_from, "kolvo_to" => $cr->kolvo_to];
-                                    $replacement_ids[] = $cr->nomenklatura_to_id;
-                                }
-                            }
+                $items = $p->items()->select('id')->get();
+                $items_ids = $items->pluck('id');
+                $components = ProductionComponent::whereIn('production_item_id', $items_ids)->get()->values();
+                // суммы списываемой номенклатуры
+                $sum_by_components = $components->groupBy('nomenklatura_id')->map(function ($components) {
+                    return $components->sum('kolvo');
+                });
+                // анализируем остатки на складе
+                $this->clear_remains();
+                $deficit = []; // недостаточно для списания
+                $deficit_after_replace = [];  // недостаточно для списания после замен
+                $allow_for_debt = []; // доступно для списания
+                $sum_by_components->each(function ($need_kolvo, $nomenklatura_id) use ($p, &$deficit, &$allow_for_debt) {
+                    $remains = $this->remains($p, $nomenklatura_id);
+                    if (!$remains['is_usluga']) {
+                        $deficit_nomenklatura = $remains['remains'] - $need_kolvo;
+                        if ($deficit_nomenklatura < 0) {
+                            $deficit[$nomenklatura_id] = $deficit_nomenklatura;
+                            $allow_for_debt[$nomenklatura_id] = 0;
+                        } else {
+                            $allow_for_debt[$nomenklatura_id] = $deficit_nomenklatura;
                         }
-                        // если есть замены на уровне производства
-                        $production_replacements = $p->replaces->where('component_id', 1)->where('nomenklatura_from_id', $component->nomenklatura_id);
-                        if ($production_replacements) {
-                            foreach ($production_replacements as $pr) {
-                                if (!in_array($pr->nomenklatura_to_id, $replacement_ids)) {
-                                    $replacements[] = ["nomenklatura_id" => $pr->nomenklatura_to_id, "kolvo_from" => $pr->kolvo_from, "kolvo_to" => $pr->kolvo_to];
-                                    $replacement_ids[] = $pr->nomenklatura_to_id;
-                                }
+                    }
+                });
+                // максимально возможное кол-во для списания
+                $max_kolvo_for_replace = $allow_for_debt;
+                // рецепт
+                $recipe_replaces = collect([]);
+                $production_replaces = collect([]);
+                if (count($deficit) > 0) {
+                    // подгрузим замены
+                    $recipe_items_ids = RecipeItem::where('recipe_id', $p->recipe_id)->get()->pluck('id');
+                    // поля замен
+                    $replace_fields = ['nomenklatura_from_id', 'nomenklatura_to_id', 'kolvo_from', 'kolvo_to'];
+                    // замены рецептуры
+                    $recipe_replaces = RecipeItemReplace::whereIn('recipe_item_id', $recipe_items_ids)->get()
+                        ->mapToGroups(function ($replace) use ($replace_fields) {
+                            $res = [
+                                'item_id' => 1,
+                                'component_id' => 1
+                            ];
+                            foreach ($replace_fields as $field) {
+                                $res[$field] = $replace->$field;
                             }
-                        }
-                        // замены на уровне рецептур
-                        $recipe_replacements = $p->recipes->items()->whereHas('replaces', function ($query) use ($component) {
-                            $query->where('nomenklatura_id', $component->nomenklatura_id);
+                            // return $res;
+                            return [$replace['nomenklatura_from_id'] => $res];
                         });
-                        if ($recipe_replacements) {
-                            foreach ($recipe_replacements as $rr) {
-                                if (!in_array($rr->nomenklatura_to_id, $replacement_ids)) {
-                                    $replacements[] = ["nomenklatura_id" => $rr->nomenklatura_to_id, "kolvo_from" => $rr->kolvo_from, "kolvo_to" => $rr->kolvo_to];
-                                    $replacement_ids[] = $rr->nomenklatura_to_id;
+                    // dd($recipe_replaces->toArray());
+                    // замены производства
+                    $production_replaces = ProductionReplace::where('production_id', $p->id)->get()
+                        ->mapToGroups(function ($replace) use ($replace_fields, $components) {
+                            $item_id = 1;
+                            $component_id = 1;
+                            $max_kolvo = null;
+                            try {
+                                if ($replace->component_id > 1) {
+                                    $component = $components->firstWhere('id', $replace->component_id);
+                                    $component_id = $replace->component_id;
+                                    $item_id = $component->production_item_id;
+                                    $max_kolvo = $component->kolvo;
                                 }
+                            } catch (\Throwable $th) {
                             }
+                            $res = [
+                                'item_id' => $item_id,
+                                'component_id' => $component_id
+                            ];
+                            if ($max_kolvo) $res['max_kolvo'] = $max_kolvo;
+                            foreach ($replace_fields as $field) {
+                                $res[$field] = $replace->$field;
+                            }
+                            return [$replace['nomenklatura_from_id'] => $res];
+                        })->map(function ($replaces) {
+                            return $replaces->sortByDesc('item_id');
+                        });
+
+                    // проверим, что замен хватит для производства
+                    foreach ($deficit as $deficit_nomenklatura_id => $deficit_kolvo) {
+                        $need_debt = abs($deficit_kolvo);
+                        $replaces = [];
+                        if (isset($production_replaces[$deficit_nomenklatura_id])) {
+                            $replaces = array_merge($replaces, $production_replaces[$deficit_nomenklatura_id]->toArray());
                         }
-                        // if (count($replacements)>0) var_dump($replacements);
-                        $n = Nomenklatura::find($component->nomenklatura_id);
-                        if ($n) {
-                            // если услуга - остатки не проверяем, только суммируем себестоимость
-                            if ($n->is_usluga != 1) {
-                                // создаем экземпляр регистра остатков
-                                $register  = new SkladRegister;
-                                // данные регистра без учета номенклатуры списания
-                                $register_data = [
-                                    "doc_date" => $p->doc_date,
-                                    "ou_date" => date("Y-m-d"),
-                                    "sklad_id" => $p->sklad_id,
-                                    "firm_id" => 1,
-                                    "kontragent_id" => 1,
-                                    "price" => 0,
-                                    "summa" => 0,
-                                    "nds_id" => 1,
-                                    "saldo" => 0
-                                ];
-                                // проверим остаток на складе
-                                if (!in_array($component->nomenklatura_id, $checked_ids)) {
-                                    $register_data_balance = $register->sklad_id($p->sklad_id)->nomenklatura_id($component->nomenklatura_id)->ou_date()->lockForUpdate();
-                                    if ($register_data_balance) {
-                                        $ostatok = floatVal($register_data_balance->get()->sum('kolvo'));
-                                        // если такая номенклатура есть на складе
-                                        if ($ostatok > 0) {
-                                            // если остаток меньше необходимого кол-ва - списываем сколько есть
-                                            if ($ostatok < $kolvo) {
-                                                // изменяем кол-во компонента
-                                                $component->fill(["kolvo" => $ostatok])->save();
-                                                // записываем регистр
-                                                $register_data += [
-                                                    "nomenklatura_id" => $component->nomenklatura_id,
-                                                    "kolvo" => -$ostatok,
-                                                    "ou_kolvo" => -$ostatok,
-                                                ];
-                                            } else {
-                                                // списываем все кол-во
-                                                $register_data += [
-                                                    "nomenklatura_id" => $component->nomenklatura_id,
-                                                    "kolvo" => -$kolvo,
-                                                    "ou_kolvo" => -$kolvo,
-                                                ];
-                                            }
-                                            // сохраняем в регистр
-                                            $reg_item = $component->register()->first();
-                                            if ($reg_item) {
-                                                $reg = $reg_item->update($register_data);
-                                            } else {
-                                                $sklad_register = new SkladRegister;
-                                                $reg = $component->register()->save($sklad_register->fill($register_data));
-                                            }
-                                            // $reg = $component->register()->updateOrCreate(["saldo"=>$register_data["saldo"], "nomenklatura_id"=>$register_data["nomenklatura_id"]],$register_data);
-                                            if ($reg) {
-                                                // изменяем кол-во
-                                                $kolvo -= abs($register_data["kolvo"]);
-                                                // добавляем в массив проверенных
-                                                $checked_ids[] = $component->nomenklatura_id;
-                                                // добавляем к себестоимости
-                                                $prime_cost += abs($register_data["kolvo"]) * floatVal($n->avg_price);
-                                            }
-                                        } else {
-                                            // удаляем запись из списка компонентов
-                                            $component->fill(["kolvo" => 0])->save();
-                                        }
+                        if (isset($recipe_replaces[$deficit_nomenklatura_id])) {
+                            $replaces = array_merge($replaces, $recipe_replaces[$deficit_nomenklatura_id]->toArray());
+                        }
+                        // считаем замещение
+                        foreach ($replaces as $replace) {
+                            if ($need_debt > 0) {
+                                // коэфициент списания
+                                $ratio = $replace['kolvo_to'] / $replace['kolvo_from'];
+                                // максимально возможное кол-во для списания
+                                $nomenklatura_remains = $this->remains($p, $replace['nomenklatura_to_id']);
+                                $replace_remains = $nomenklatura_remains['remains'];
+                                // для услуг остатки не проверяем
+                                if ($nomenklatura_remains['is_usluga']) {
+                                    $need_debt = 0;
+                                } else {
+                                    if (isset($allow_for_debt[$replace['nomenklatura_to_id']])) {
+                                        $max_debt_kolvo = $allow_for_debt[$replace['nomenklatura_to_id']];
                                     } else {
-                                        $component->fill(["kolvo" => 0])->save();
+                                        $max_debt_kolvo = $replace_remains;
+                                        $allow_for_debt[$replace['nomenklatura_to_id']] = $max_debt_kolvo;
                                     }
-                                }
-                                // если есть замены
-                                if (count($replacements) > 0) {
-                                    // пройдем по всем заменам, пока есть что списывать
-                                    foreach ($replacements as $replace) {
-                                        // если еще есть что списывать
-                                        if ($kolvo > 0) {
-                                            // если мы еще не искали остатки по этой номенклатуре
-                                            if (!in_array($replace["nomenklatura_id"], $checked_ids)) {
-                                                // номенклатура замены
-                                                $replacement_nomenklatura_id = Nomenklatura::find($replace['nomenklatura_id']);
-                                                // коэффициент замены
-                                                $ratio = $replace['kolvo_to'] / $replace['kolvo_from'];
-                                                // необходимое кол-во с учетом коэффициента
-                                                $ratio_kolvo = $kolvo * $ratio;
-                                                // если услуга - не проверяем наличие
-                                                if ($replacement_nomenklatura_id->is_usluga != 1) {
-                                                    // ищем остаток номенклатуры
-                                                    $register_data_balance = $register->sklad_id($p->sklad_id)->nomenklatura_id($replace['nomenklatura_id'])->date($p->doc_date)->lockForUpdate();
-                                                    if ($register_data_balance) {
-                                                        $ostatok = floatVal($register_data_balance->get()->sum('kolvo'));
-                                                        // если такая номенклатура есть на складе
-                                                        if ($ostatok > 0) {
-                                                            // необходимое кол-во с учетом коэффициента
-                                                            $ratio_kolvo = $kolvo * $ratio;
-                                                            // если остаток меньше необходимого кол-ва - списываем сколько есть
-                                                            if ($ostatok < $ratio_kolvo) {
-                                                                $register_data["nomenklatura_id"] = $replace['nomenklatura_id'];
-                                                                $register_data["kolvo"] = -$ostatok;
-                                                                $register_data["ou_kolvo"] = -$ratio_kolvo;
-                                                            } else {
-                                                                // списываем все кол-во
-                                                                $register_data["nomenklatura_id"] = $replace['nomenklatura_id'];
-                                                                $register_data["kolvo"] = -$ratio_kolvo;
-                                                                $register_data["ou_kolvo"] = -$ratio_kolvo;
-                                                            }
-                                                            // добавляем в список компонентов
-                                                            $new_production_component = $component->replicate();
-                                                            $new_production_component->fill([
-                                                                "nomenklatura_id" => $replace['nomenklatura_id'],
-                                                                "kolvo" => abs($register_data["kolvo"]),
-                                                                "price" => 0,
-                                                                "summa" => 0,
-                                                                "is_replaced" => 1
-                                                            ])->save();
-                                                            // сохраняем в регистр
-                                                            $sklad_register = new SkladRegister;
-                                                            $reg = $new_production_component->register()->save($sklad_register->fill($register_data));
-                                                            if ($reg) {
-                                                                // изменяем кол-во
-                                                                $kolvo -= abs($register_data["kolvo"]) / $ratio;
-                                                                // добавляем в массив проверенных
-                                                                $checked_ids[] = $replace['nomenklatura_id'];
-                                                                // добавляем к себестоимости
-                                                                $prime_cost += abs($register_data["kolvo"]) * floatVal($replacement_nomenklatura_id->avg_price);
-                                                            } else {
-                                                                abort(421, "#PO.Не записан регистр " . $register_data["nomenklatura_id"]);
-                                                            }
-                                                            unset($new_production_component);
-                                                        }
-                                                    }
-                                                } else {
-                                                    // добавим к себестоимости
-                                                    $prime_cost += abs($ratio_kolvo) * floatVal($replacement_nomenklatura_id->avg_price);
-                                                    // просто добавим в компоненты
-                                                    $new_production_component = $component->replicate();
-                                                    $new_production_component->fill([
-                                                        "nomenklatura_id" => $replace['nomenklatura_id'],
-                                                        "kolvo" => abs($ratio_kolvo),
-                                                        "price" => 0,
-                                                        "summa" => 0
-                                                    ])->save();
-                                                    unset($new_production_component);
-                                                    // ошибок по остаткам нет
-                                                    $kolvo = 0;
-                                                }
-                                            }
-                                        }
+                                    // максимально возможное кол-во списания(например, при замене компонента)
+                                    $max_replace_kolvo = $need_debt;
+                                    if (isset($replace['max_kolvo'])) {
+                                        $max_replace_kolvo = $replace['max_kolvo'];
                                     }
-                                }
-                                // если осталось несписанное количество
-                                if ($kolvo > 0) {
-                                    $deficit[$component->nomenklatura_id] = (isset($deficit[$component->nomenklatura_id]) ? floatVal($deficit[$component->nomenklatura_id]) : 0) + $kolvo;
+                                    // нужное кол-во с учетом коэффициента
+                                    $need_debt_with_ratio = $max_replace_kolvo * $ratio;
+                                    // сравниваем кол-во
+                                    if ($need_debt_with_ratio > $max_debt_kolvo) {
+                                        $need_debt -= $max_debt_kolvo / $ratio;
+                                        $allow_for_debt[$replace['nomenklatura_to_id']] = 0;
+                                    } else {
+                                        $allow_for_debt[$replace['nomenklatura_to_id']] -= $need_debt_with_ratio;
+                                        $need_debt = 0;
+                                    }
                                 }
                             } else {
-                                $prime_cost += $kolvo * floatVal($n->avg_price);
+                                break;
                             }
-                        } else {
-                            // если не нашли компонент в таблице номенклатур - ошибка
-                            abort(421, "#PO.Номенклатуры " . $component->nomenklatura_id . " не найдено");
                         }
-                    }
-                    // все компоненты проведены без ошибок - добавляем изделие в регистр
-                    if (count($deficit) === 0) {
-                        // все компоненты списаны - добавляем продукцию на склад
-                        $register_data = [
-                            "doc_date" => $p->doc_date,
-                            "nomenklatura_id" => $p->product()->id,
-                            "sklad_id" => $p->sklad_id,
-                            "firm_id" => 1,
-                            "kontragent_id" => 1,
-                            "kolvo" => 1,
-                            "price" => $prime_cost,
-                            "summa" => $prime_cost,
-                            "nds_id" => 1,
-                            "saldo" => 1
-                        ];
-                        // если установлена галочка is_producted - добавим дату в оперативный учет
-                        if ($item->is_producted == 1) {
-                            $register_data["ou_date"] = date("Y-m-d");
-                            $register_data["ou_kolvo"] = 1;
-                        }
-                        // добавляем или обновляем регистр
-                        $reg_item = $item->register()->first();
-                        if ($reg_item) {
-                            $reg = $reg_item->update($register_data);
-                        } else {
-                            $sklad_register_model = new SkladRegister;
-                            $sklad_register_item = $sklad_register_model->fill($register_data);
-                            $reg = $item->register()->save($sklad_register_item);
-                        }
-                        if (!$reg) {
-                            abort(421, '#PO.Произведенное изделие с Инв.№' . $item->serial . ' не добавлено в регистр');
-                            return false;
+                        if ($need_debt > 0) {
+                            $deficit_after_replace[$deficit_nomenklatura_id] = $need_debt;
                         }
                     }
                 }
-                // если ошибок не было
-                if (count($deficit) > 0) {
+                if ($debug) Log::info("--- ПРОВОДИМ ПРОИЗВОДСТВО $p->id --- ", [
+                    'sum_by_components' => $sum_by_components->toArray(),
+                    'recipe_replaces' => $recipe_replaces->toArray(),
+                    'production_replaces' => $production_replaces->toArray(),
+                    'deficit_after_replace' => $deficit_after_replace,
+                ]);
+                // если после замен все равно недостаточно - выведем ошибку
+                if (count($deficit_after_replace) > 0) {
                     $remains_errors = [];
-                    foreach ($deficit as $nomenklatura_id => $kolvo) {
-                        $n = Nomenklatura::find($nomenklatura_id);
-                        $remains_errors[] = $n->select_list_title . " в количестве " . $kolvo . " " . $n->edIsm;
+                    foreach ($deficit_after_replace as $nomenklatura_id => $kolvo) {
+                        $nomenklatura_remains = $this->remains($p, $nomenklatura_id);
+                        $remains_errors[] = $nomenklatura_remains['title'] . " в количестве " . $kolvo . " " . $nomenklatura_remains['ed_ism'];
                     }
-                    abort(421, "#PO. Недостаточно: " . implode(', ', $remains_errors));
+                    throw new TriggerException("#PO. Недостаточно: " . implode(', ', $remains_errors));
+                    // abort(421, "#PO. Недостаточно: " . implode(', ', $remains_errors));
                     return false;
+                } else {
+                    // сборка изделий
+                    $components_by_items_and_nomenklatura = $components->groupBy('production_item_id', 'nomenklatura_id');
+                    $components_by_items_and_nomenklatura->each(function ($components, $item_id) use ($p, $production_replaces, $recipe_replaces, &$max_kolvo_for_replace, $debug) {
+                        // себестоимость
+                        $self_price = 0;
+                        if ($debug) Log::info("--- СОБИРАЕМ ИЗДЕЛИЕ $item_id --- ", [
+                            'components' => $components->pluck('kolvo', 'nomenklatura_id')->toArray(),
+                            'max_kolvo_for_replace' => $max_kolvo_for_replace,
+                        ]);
+                        $components->each(function ($component) use ($p, &$self_price, $production_replaces, $recipe_replaces, &$max_kolvo_for_replace, $debug) {
+                            // осталось списать
+                            $need_kolvo = $component->kolvo;
+                            // берем остатки из кэша
+                            $cache_remains = $this->remains($p, $component->nomenklatura_id);
+                            if ($debug) Log::info("--- ОБРАБАТЫВАЕМ НОМЕНКЛАТУРУ КОМПОНЕНТА $component->nomenklatura_id --- ", [
+                                'need_kolvo' => $need_kolvo,
+                                'cache_remains' => $cache_remains
+                            ]);
+                            // для услуги - только себестоимость
+                            if ($cache_remains['is_usluga']) {
+                                $sub_kolvo = $need_kolvo;
+                            } else {
+                                if ($need_kolvo > $cache_remains['remains']) {
+                                    $sub_kolvo = $cache_remains['remains'];
+                                } else {
+                                    $sub_kolvo = $need_kolvo;
+                                }
+                            }
+                            if (!$this->sub_remains($component->nomenklatura_id, $sub_kolvo)) {
+                                throw new TriggerException("#PO. Ошибка чтения кэша остатков");
+                                if ($debug) Log::info("--- ОШИБКА ЧТЕНИЯ ОСТАТКОВ ДЛЯ НОМЕНКЛАТУРЫ $component->nomenklatura_id. СПИСЫВАЕМ $sub_kolvo ПРИ НАЛИЧИИ " . $cache_remains['remains'] . " --- ");
+                            }
+                            $need_kolvo -= $sub_kolvo;
+                            $component_sum = $cache_remains['avg_price'] * $sub_kolvo;
+                            $component->fill([
+                                "kolvo" => $sub_kolvo,
+                                "price" => $cache_remains['avg_price'],
+                                "summa" => $component_sum,
+                            ])->save();
+                            $self_price += $component_sum;
+                            if ($debug) Log::info("--- СПИСАНИЕ ИЗ ОСТАТКОВ --- ", [
+                                'sub_kolvo' => $sub_kolvo,
+                                'need_kolvo' => $need_kolvo,
+                                'self_price' => $self_price
+                            ]);
+                            // замены
+                            if ($need_kolvo > 0) {
+                                $replaces = [];
+                                if (isset($production_replaces[$component->nomenklatura_id])) {
+                                    $replaces = array_merge($replaces, $production_replaces[$component->nomenklatura_id]->toArray());
+                                }
+                                if (isset($recipe_replaces[$component->nomenklatura_id])) {
+                                    $replaces = array_merge($replaces, $recipe_replaces[$component->nomenklatura_id]->toArray());
+                                }
+                                if ($debug) Log::info("--- ОБРАБАТЫВАЕМ ЗАМЕНЫ ДЛЯ КОМПОНЕНТА $component->nomenklatura_id --- ", [
+                                    'need_kolvo' => $need_kolvo,
+                                    'replaces' => $replaces
+                                ]);
+                                // считаем замещение
+                                foreach ($replaces as $replace) {
+                                    if ($debug) Log::info("--- ОБРАБАТЫВАЕМ ЗАМЕНУ --- ", [
+                                        'replace' => $replace
+                                    ]);
+                                    if ($need_kolvo > 0) {
+                                        if ($replace['component_id'] > 1 && $component->id != $replace['component_id']) {
+                                            if ($debug) Log::info("--- ЗАМЕНА ТОЛЬКО ДЛЯ КОМПОНЕНТА С ID=" . $replace['component_id'] . ", У НАС ID= $component->id, ПРОПУСКАЕМ --- ");
+                                            continue;
+                                        } else {
+                                            // коэфициент списания
+                                            $ratio = $replace['kolvo_to'] / $replace['kolvo_from'];
+                                            // максимально возможное кол-во для списания
+                                            $nomenklatura_remains = $this->remains($p, $replace['nomenklatura_to_id']);
+                                            $replace_remains = $nomenklatura_remains['remains'];
+                                            // для услуг остатки не проверяем
+                                            if ($nomenklatura_remains['is_usluga']) {
+                                                $sub_kolvo = $need_kolvo * $ratio;
+                                                $need_kolvo = 0;
+                                            } else {
+                                                // если указано максимально возможное кол-во списания
+                                                if (isset($max_kolvo_for_replace[$replace['nomenklatura_to_id']]) && $max_kolvo_for_replace[$replace['nomenklatura_to_id']] < $replace_remains) {
+                                                    $replace_remains = $max_kolvo_for_replace[$replace['nomenklatura_to_id']];
+                                                }
+                                                if ($replace_remains > 0) {
+                                                    // нужное кол-во с учетом коэффициента
+                                                    $need_debt_with_ratio = $need_kolvo * $ratio;
+                                                    // сравниваем кол-во
+                                                    if ($need_debt_with_ratio > $replace_remains) {
+                                                        $need_kolvo -= $replace_remains / $ratio;
+                                                        $sub_kolvo = $replace_remains;
+                                                    } else {
+                                                        $sub_kolvo = $need_kolvo * $ratio;
+                                                        $need_kolvo = 0;
+                                                    }
+                                                    if (isset($max_kolvo_for_replace[$replace['nomenklatura_to_id']])) $max_kolvo_for_replace[$replace['nomenklatura_to_id']] -= $sub_kolvo;
+                                                } else {
+                                                    if ($debug) Log::info("--- ДОСТИГНУТО МАКСИМАЛЬНОЕ КОЛ-ВО ДЛЯ ЗАМЕНЫ " . $replace['component_id'] . " --- ");
+                                                    continue;
+                                                }
+                                            }
+                                            if (!$this->sub_remains($replace['nomenklatura_to_id'], $sub_kolvo)) {
+                                                throw new TriggerException("#PO. Ошибка чтения кэша остатков");
+                                                if ($debug) Log::info("--- ОШИБКА ЧТЕНИЯ ОСТАТКОВ ДЛЯ НОМЕНКЛАТУРЫ " . $replace['nomenklatura_to_id'] . ". СПИСЫВАЕМ $sub_kolvo ПРИ НАЛИЧИИ $replace_remains --- ");
+                                            }
+
+                                            $replace_sum = $nomenklatura_remains['avg_price'] * $sub_kolvo;
+                                            $self_price += $replace_sum;
+                                            // добавляем компонент в производство
+                                            $new_production_component = $component->replicate();
+                                            $new_component_data = [
+                                                "nomenklatura_id" => $replace['nomenklatura_to_id'],
+                                                "kolvo" => $sub_kolvo,
+                                                "price" => $nomenklatura_remains['avg_price'],
+                                                "summa" => $replace_sum,
+                                                "is_replaced" => 1
+                                            ];
+                                            $new_production_component->fill($new_component_data)->save();
+                                            if ($debug) Log::info("--- ДОБАВЛЯЕМ ЗАМЕНУ --- ", [
+                                                'ratio' => $ratio,
+                                                'nomenklatura_remains' => $nomenklatura_remains,
+                                                'sub_kolvo' => $sub_kolvo,
+                                                'new_component_data' => $new_component_data,
+                                                'new_component_registers' => $new_production_component->register()->get()->pluck('kolvo', 'nomenklatura_id')->toArray()
+                                            ]);
+                                        }
+                                    } else {
+                                        if ($debug) Log::info("--- БОЛЬШЕ ЗАМЕН НЕ НУЖНО, ПРОПУСКАЕМ --- ");
+                                        break;
+                                    }
+                                }
+                            }
+                            if ($need_kolvo > 0) {
+                                throw new TriggerException("#PO. Недостаточно " . $need_kolvo . " " . $cache_remains['ed_ism'] . " " . $cache_remains['title'] . " для производства");
+                            }
+                        });
+                        $production_item = $p->items()->find($item_id);
+                        $production_item->fill([
+                            'price' => $self_price,
+                            'summa' => $self_price
+                        ])->save();
+                        if ($debug) Log::info("--- СОХРАНЕМ ИЗДЕЛИЕ $production_item->id --- ", [
+                            'self_price' => $self_price,
+                        ]);
+                    });
                 }
             } else {
-                abort(421, '#PO.Проводить можно только кладовщику или администратору');
+                throw new TriggerException('#PO.Проводить можно только кладовщику или администратору');
+                // abort(421, '#PO.Проводить можно только кладовщику или администратору');
                 return false;
             }
         }
@@ -427,7 +537,8 @@ class ProductionObserver
         // проверяем можно ли распровести оприходованные изделия
         $check = $this->check_unactive($p);
         if (!$check["can"]) {
-            abort(421, "#PO." . implode(", ", $check["err"]));
+            throw new TriggerException("#PO." . implode(", ", $check["err"]));
+            // abort(421, "#PO." . implode(", ", $check["err"]));
             return false;
         }
     }
@@ -440,7 +551,8 @@ class ProductionObserver
         foreach ($items as $item) {
             $res = $item->delete();
             if (!$res) {
-                abort(421, "#PO.Ошибка при удалении произведенной продукции #" . $item->id);
+                throw new TriggerException("#PO.Ошибка при удалении произведенной продукции #" . $item->id);
+                // abort(421, "#PO.Ошибка при удалении произведенной продукции #" . $item->id);
                 return false;
             }
         }
@@ -546,7 +658,8 @@ class ProductionObserver
         if ($this->p) {
             if (isset($this->old[$field]) && isset($this->new[$field]) && $this->old[$field] != $this->new[$field] && $this->new[$field] == $val) return true;
         } else {
-            abort(421, 'Чтобы использовать if_set нужно сначала инициализировать set_vars.p');
+            throw new TriggerException('Чтобы использовать if_set нужно сначала инициализировать set_vars.p');
+            // abort(421, 'Чтобы использовать if_set нужно сначала инициализировать set_vars.p');
             return false;
         }
         return false;
@@ -557,7 +670,8 @@ class ProductionObserver
         if ($this->p) {
             if (isset($this->old[$field]) && isset($this->new[$field]) && $this->old[$field] != $this->new[$field]) return true;
         } else {
-            abort(421, 'Чтобы использовать if_change нужно сначала инициализировать set_vars.p');
+            throw new TriggerException('Чтобы использовать if_change нужно сначала инициализировать set_vars.p');
+            // abort(421, 'Чтобы использовать if_change нужно сначала инициализировать set_vars.p');
             return false;
         }
         return false;

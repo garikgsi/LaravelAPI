@@ -21,7 +21,7 @@ class API1C
     private $count = 0;
 
 
-    public function __construct($URL = "http://10.0.1.22/1c", $Login = "odata", $Password = "Tconsult", $RetryTimes = 3, $RetryTimeout = 3000)
+    public function __construct($URL = "http://10.0.1.22/1c", $Login = "odata", $Password = "", $RetryTimes = 3, $RetryTimeout = 3000)
     {
         $this->URL = config('abp.1c_odata_url', $URL);
         $this->Login = config('abp.1c_odata_login', $Login);

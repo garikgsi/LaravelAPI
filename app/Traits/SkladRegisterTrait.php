@@ -136,7 +136,7 @@ trait SkladRegisterTrait
                 $kontragent_id = 1;
                 $nomenklatura_title = $doc_item->nomenklatura;
                 $ed_ism_title = $doc_item->ed_ism;
-                $price = 0;
+                $price = $doc_item->price;
                 $nds_id = 1;
                 $nomenklatura = $doc_item->component;
             }
@@ -158,7 +158,7 @@ trait SkladRegisterTrait
                 $kontragent_id = 1;
                 $nomenklatura_title = $doc->nomenklatura;
                 $ed_ism_title = $doc->ed_ism;
-                $price = $doc_item->self_price;
+                $price = $doc_item->price;
                 $nds_id = 1;
                 $nomenklatura = $doc->product();
             }

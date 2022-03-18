@@ -72,4 +72,15 @@ class Sklad extends ABPTable
     {
         return $this->hasMany('App\SkladRegister', 'sklad_id', 'id');
     }
+
+    // остатки по складу
+    public function get_remains()
+    {
+        $remains = $this->sklad_register()->get();
+        return $remains->mapToGroups(function ($register) {
+            return [$register->nomenklatura_id => ['kolvo' => $register->ou_kolvo]];
+        })->map(function ($registers) {
+            return $registers->sum('kolvo');
+        });
+    }
 }

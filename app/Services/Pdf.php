@@ -40,7 +40,7 @@ class Pdf
                 $process->mustRun();
                 return $type == 'file' ? File::get($path) : $path;
             } catch (ProcessFailedException $exception) {
-                dd($exception);
+                // dd($exception);
                 return false;
             }
         }
@@ -69,7 +69,7 @@ class Pdf
                 $process->mustRun();
                 return $type == 'file' ? File::get($path) : $path;
             } catch (ProcessFailedException $exception) {
-                dd($exception);
+                // dd($exception);
                 return false;
             }
         }
