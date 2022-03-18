@@ -474,7 +474,8 @@ class ProductionObserver
                                                 'ratio' => $ratio,
                                                 'nomenklatura_remains' => $nomenklatura_remains,
                                                 'sub_kolvo' => $sub_kolvo,
-                                                'new_component_data' => $new_component_data
+                                                'new_component_data' => $new_component_data,
+                                                'new_component_registers' => $new_production_component->register()->get()->pluck('kolvo', 'nomenklatura_id')->toArray()
                                             ]);
                                         }
                                     } else {

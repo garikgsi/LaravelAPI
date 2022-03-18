@@ -114,7 +114,7 @@ class ApiTest extends TestCase
             SkladReceive::class, SkladReceiveItem::class, Sklad::class,
             Sotrudnik::class, SkladMove::class, SkladMoveItem::class,
             Production::class, ProductionItem::class, ProductionComponent::class,
-            Recipe::class, RecipeItem::class
+            Recipe::class, RecipeItem::class, RecipeItemReplace::class
         ];
         foreach ($tables as $table) {
             $table::where("comment", self::$comment)->forceDelete();
@@ -240,9 +240,13 @@ class ApiTest extends TestCase
         }
     }
 
-    // тест изменения
-    //          Route::put('/{table}/{id}', 'APIController@update')->middleware('auth:api');;
-    //          Route::patch('/{table}/{id}', 'APIController@update')->middleware('auth:api');;
+    /**
+     * тест изменения
+     * Route::put('/{table}/{id}', 'APIController@update')->middleware('auth:api');;
+     * Route::patch('/{table}/{id}', 'APIController@update')->middleware('auth:api');;
+     *
+     * @return void
+     */
     public function testUpdateNomenklatura()
     {
         $nomenklatura = Nomenklatura::where('comment', self::$comment)->orderBy('id')->get();
@@ -286,8 +290,12 @@ class ApiTest extends TestCase
         }
     }
 
-    // тест удаления
-    //      Route::delete('/{table}/{id}', 'APIController@destroy')->middleware('auth:api');;
+    /**
+     * тест удаления
+     * Route::delete('/{table}/{id}', 'APIController@destroy')->middleware('auth:api');;
+     *
+     * @return void
+     */
     public function testDeleteManufacturer()
     {
         $delete_count = 2;
@@ -314,8 +322,12 @@ class ApiTest extends TestCase
         $this->assertSame(Manufacturer::whereIn('id', $deleted_ids)->withTrashed()->where('deleted_by', $this->admin_user->id)->count(), 2, 'user wan not setted when delete row');
     }
 
-    // тест чтения групп для таблицы
-    //      Route::get('/groups/{table}', 'APIController@get_groups')->middleware('auth:api'); // получить все возможные группы для таблицы table
+    /**
+     * тест чтения групп для таблицы
+     * Route::get('/groups/{table}', 'APIController@get_groups')->middleware('auth:api'); // получить все возможные группы для таблицы table
+     *
+     * @return void
+     */
     public function testReadTableGroups()
     {
 
@@ -328,8 +340,12 @@ class ApiTest extends TestCase
             ]);
     }
 
-    // тест чтения единственной записи
-    //      Route::get('/{table}/{id}', 'APIController@show')->middleware('auth:api');;
+    /**
+     * тест чтения единственной записи
+     * Route::get('/{table}/{id}', 'APIController@show')->middleware('auth:api');;
+     *
+     * @return void
+     */
     public function testRead1Row()
     {
         $nomenklatura = Nomenklatura::where('comment', self::$comment)->orderBy('id')->take(1)->first();
@@ -1516,6 +1532,7 @@ class ApiTest extends TestCase
                 if ($ostatki->count() > 3 && $deficit->count() > 1 && $sum_kolvo_ostatki > $sum_kolvo_deficit) {
                     // массив остатков
                     $remains = $ostatki->all();
+
                     // идем по всему дефициту
                     $deficit->each(function ($item, $key) use (&$has_production_replace, &$has_item_replace, &$has_recipe_replace, &$remains, &$production_components, $production, &$replacements, $items) {
                         // дефицитная номенклатура
@@ -1524,9 +1541,10 @@ class ApiTest extends TestCase
                         $deficit_nomenklatura_kolvo = $item;
                         // заменяем пока дефицит по номенклатуре положительный
                         while ($deficit_nomenklatura_kolvo > 0) {
+                            $replaced_nomenklatura = [];
                             // фильтруем остатки от нулевых значений и выбираем случайный элемент остатков
-                            $r_nomenklatura_id = array_rand(array_filter($remains, function ($value, $key) {
-                                return $value > 0;
+                            $r_nomenklatura_id = array_rand(array_filter($remains, function ($value, $key) use ($deficit_nomenklatura_id, $replaced_nomenklatura) {
+                                return $value > 0 && $key != $deficit_nomenklatura_id && !in_array($key, $replaced_nomenklatura);
                             }, ARRAY_FILTER_USE_BOTH));
                             $r_ostatok = $remains[$r_nomenklatura_id];
                             // лог остатков по итерациям
@@ -1607,18 +1625,25 @@ class ApiTest extends TestCase
                             $recipe_item = RecipeItem::where('recipe_id', $production->recipe_id)->where('nomenklatura_id', $deficit_nomenklatura_id)->get()->first();
                             // необходимое кол-во для производства по строке рецептуры
                             $recipe_item_kolvo_by_production = $recipe_item->kolvo * $production->kolvo;
-                            $kolvo_to = $this->faker->numberBetween(0, 3) == 0 ? 0.5 : 1;
+                            $kolvo_to = $this->faker->numberBetween(0, 2) == 0 ? 0.5 : 1;
                             // необходимое кол-во для замены по строке рецептуры
                             $recipe_item_kolvo_by_production = $recipe_item->kolvo * $kolvo_to * $production->kolvo;
                             // делаем замену
                             $recipe_replace = new RecipeItemReplace();
-                            $recipe_replace->fill([
-                                'comment' => self::$comment,
-                                'recipe_item_id' => $recipe_item->id,
-                                'nomenklatura_to_id' => $r_nomenklatura_id,
-                                'kolvo_from' => 1,
-                                'kolvo_to' => $kolvo_to
-                            ])->save();
+                            $recipe_replace->updateOrCreate(
+                                [
+                                    'recipe_item_id' => $recipe_item->id,
+                                    'nomenklatura_to_id' => $r_nomenklatura_id
+                                ],
+                                [
+                                    'recipe_item_id' => $recipe_item->id,
+                                    'nomenklatura_to_id' => $r_nomenklatura_id,
+                                    'comment' => self::$comment,
+                                    'kolvo_from' => 1,
+                                    'kolvo_to' => $kolvo_to
+                                ]
+                            )->save();
+                            $replaced_nomenklatura[] = $r_nomenklatura_id;
                             // кол-во заменяемого
                             $replace_kolvo = $r_ostatok > $recipe_item_kolvo_by_production ? $recipe_item_kolvo_by_production : $r_ostatok;
                             // изменяем остаток
@@ -1712,6 +1737,8 @@ class ApiTest extends TestCase
             $response->assertJson([
                 "is_error" => false,
             ]);
+            $p = Production::find($production_id);
+            $this->assertTrue($this->checkRemains($p->sklad_id));
         }
     }
 
@@ -1724,6 +1751,27 @@ class ApiTest extends TestCase
     // тест выборки накладных с критериями вложенной фильтрации
     // тест серийных номеров
 
+    /**
+     * сверяем остатки в БД с расчетной моделью
+     *
+     * @param  mixed $sklad_id
+     * @return bool
+     */
+    private function checkRemains($sklad_id): bool
+    {
+        $db_remains = Sklad::find($sklad_id)->get_remains()->sortKeys()->filter(function ($remains) {
+            return $remains > 0;
+        })->toArray();
+        $calc_remains = $this->calcRemains()[$sklad_id];
+        $res = $db_remains === $calc_remains;
+        if (!$res) {
+            Log::info("_ WRONG REMAINS _", [
+                'db_remains' => $db_remains,
+                'calc_remains' => $calc_remains,
+            ]);
+        }
+        return $res;
+    }
 
     // вычисляем остатки на установленную дату согласно внутренним регистрам (расчетная модель)
     private function calcRemains($ltDate = null)

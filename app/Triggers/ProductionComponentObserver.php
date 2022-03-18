@@ -53,14 +53,6 @@ class ProductionComponentObserver
                 return false;
             }
 
-            // если изделие приходуем на склад - проверим, чтобы документ был проведен
-            if ($this->if_set('is_producted', 1)) {
-                if ($this->p->is_active != 1) {
-                    abort(421, '#PCO.Невозможно оприходовать на склад готовое изделие при непроведенной накладной');
-                    return false;
-                }
-            }
-
             // проверим регистры накопления
             $res = $pc->mod_register(0);
             if ($res["is_error"]) {
