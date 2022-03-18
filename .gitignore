@@ -10,3 +10,10 @@ Homestead.json
 Homestead.yaml
 npm-debug.log
 yarn-error.log
+launch.json
+.DS_Store
+.gitignore
+package-lock.json
+.gitignore
+
+config/database.php

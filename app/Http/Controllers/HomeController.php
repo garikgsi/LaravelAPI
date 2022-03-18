@@ -773,6 +773,7 @@ class HomeController extends Controller
 
         //         dd($move_array);
         return view('home', ["user" => $user]);
+
     }
 
     //     public function normalize_text($text)
