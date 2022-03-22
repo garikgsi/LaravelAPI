@@ -129,16 +129,18 @@ class ApiTest extends TestCase
     }
 
     // после всех тестов
-    public static function tearDownAfterClass(): void
-    {
-        // parent::tearDownAfterClass();
-        self::cleanDb();
-    }
+    // public static function tearDownAfterClass(): void
+    // {
+    //     // parent::tearDownAfterClass();
+    //     self::cleanDb();
+    // }
 
     // тест добавления номенклатуры
     //          Route::post('/groups/{table}/{id}', 'APIController@add_group')->middleware('auth:api'); // вставить новую группу и присвоить ее id table-id
     public function testCreateNomenklatura()
     {
+        self::cleanDb();
+
         // номенклатура до момента вставки записи
         $nomenklatura_before = Nomenklatura::where('comment', self::$comment)->get();
 
@@ -1539,40 +1541,115 @@ class ApiTest extends TestCase
                         $deficit_nomenklatura_id = $key;
                         // всего по номенклатуре дефицита
                         $deficit_nomenklatura_kolvo = $item;
+                        $replaced_nomenklatura = [];
                         // заменяем пока дефицит по номенклатуре положительный
                         while ($deficit_nomenklatura_kolvo > 0) {
-                            $replaced_nomenklatura = [];
                             // фильтруем остатки от нулевых значений и выбираем случайный элемент остатков
-                            $r_nomenklatura_id = array_rand(array_filter($remains, function ($value, $key) use ($deficit_nomenklatura_id, $replaced_nomenklatura) {
+                            $nomenklatura_without_replaced = array_filter($remains, function ($value, $key) use ($deficit_nomenklatura_id, $replaced_nomenklatura) {
                                 return $value > 0 && $key != $deficit_nomenklatura_id && !in_array($key, $replaced_nomenklatura);
-                            }, ARRAY_FILTER_USE_BOTH));
-                            $r_ostatok = $remains[$r_nomenklatura_id];
-                            // лог остатков по итерациям
-                            // Log::info("_ITERATION_", [
-                            //     'remains' => $remains,
-                            // ]);
-                            // добавим замену в рецептуру
-                            if (!$has_item_replace) {
+                            }, ARRAY_FILTER_USE_BOTH);
+                            if (count($nomenklatura_without_replaced)>0) {
+                                $r_nomenklatura_id = array_rand($nomenklatura_without_replaced);
+                                $r_ostatok = $remains[$r_nomenklatura_id];
+                                // лог остатков по итерациям
+                                // Log::info("_ITERATION_", [
+                                //     'remains' => $remains,
+                                // ]);
+                                // добавим замену в рецептуру
+                                if (!$has_item_replace) {
+                                    // найдем строку рецептуры, которую заменяем
+                                    $recipe_item = RecipeItem::where('recipe_id', $production->recipe_id)->where('nomenklatura_id', $deficit_nomenklatura_id)->first();
+                                    // изделие
+                                    $production_item = $items->random();
+                                    // найдем компонент, который заменяем
+                                    $production_component = ProductionComponent::where('production_item_id', $production_item->id)->where('nomenklatura_id', $deficit_nomenklatura_id)->get()->last();
+                                    // кол-во заменяемого
+                                    $replace_kolvo = $r_ostatok >= $production_component->kolvo ? $production_component->kolvo : $r_ostatok;
+                                    // добавляем замену
+                                    $save_to_recipe = $this->faker->numberBetween(0, 1);
+                                    $replacements[] = [
+                                        'production_id' => $production->id,
+                                        'component_id' => $production_component->id,
+                                        'nomenklatura_from_id' => $deficit_nomenklatura_id,
+                                        'nomenklatura_to_id' => $r_nomenklatura_id,
+                                        'kolvo_from' => 1,
+                                        'kolvo_to' => 1,
+                                        'save_to_recipe' => $save_to_recipe
+                                    ];
+
+                                    // изменяем остаток
+                                    $remains[$r_nomenklatura_id] -= $replace_kolvo;
+                                    // добавляем компонент
+                                    $production_components[] = [
+                                        'nomenklatura_id' => $r_nomenklatura_id,
+                                        'kolvo' => $replace_kolvo,
+                                        'replaced' => true
+                                    ];
+                                    // изменяем кол-во остатка дефицитной строки
+                                    $deficit_nomenklatura_kolvo -= $replace_kolvo;
+                                    // замену в изделии сделали
+                                    $has_item_replace = true;
+                                    // следующая итерация
+                                    continue;
+                                }
+                                // если не было замен на уровне производства
+                                if (!$has_production_replace) {
+                                    // кол-во заменяемого
+                                    $replace_kolvo = $r_ostatok >= $deficit_nomenklatura_kolvo ? $deficit_nomenklatura_kolvo : $r_ostatok;
+                                    // добавляем замену
+                                    $save_to_recipe = $this->faker->numberBetween(0, 1);
+                                    $replacements[] = [
+                                        'production_id' => $production->id,
+                                        'component_id' => 1,
+                                        'nomenklatura_from_id' => $deficit_nomenklatura_id,
+                                        'nomenklatura_to_id' => $r_nomenklatura_id,
+                                        'kolvo_from' => 1,
+                                        'kolvo_to' => 1,
+                                        'save_to_recipe' => $save_to_recipe
+                                    ];
+
+                                    // изменяем остаток
+                                    $remains[$r_nomenklatura_id] -= $replace_kolvo;
+                                    // добавляем компонент
+                                    $production_components[] = [
+                                        'nomenklatura_id' => $r_nomenklatura_id,
+                                        'kolvo' => $replace_kolvo,
+                                        'replaced' => true
+                                    ];
+                                    // изменяем кол-во остатка дефицитной строки
+                                    $deficit_nomenklatura_kolvo -= $replace_kolvo;
+                                    // замену в производстве сделали
+                                    $has_production_replace = true;
+                                    // следующая итерация
+                                    continue;
+                                }
+                                // остальные замены на уровне замен в рецептуре
+
                                 // найдем строку рецептуры, которую заменяем
-                                $recipe_item = RecipeItem::where('recipe_id', $production->recipe_id)->where('nomenklatura_id', $deficit_nomenklatura_id)->first();
-                                // изделие
-                                $production_item = $items->random();
-                                // найдем компонент, который заменяем
-                                $production_component = ProductionComponent::where('production_item_id', $production_item->id)->where('nomenklatura_id', $deficit_nomenklatura_id)->get()->last();
+                                $recipe_item = RecipeItem::where('recipe_id', $production->recipe_id)->where('nomenklatura_id', $deficit_nomenklatura_id)->get()->first();
+                                // необходимое кол-во для производства по строке рецептуры
+                                $recipe_item_kolvo_by_production = $recipe_item->kolvo * $production->kolvo;
+                                $kolvo_to = $this->faker->numberBetween(0, 2) == 0 ? 0.5 : 1;
+                                // необходимое кол-во для замены по строке рецептуры
+                                $recipe_item_kolvo_by_production = $recipe_item->kolvo * $kolvo_to * $production->kolvo;
+                                // делаем замену
+                                $recipe_replace = new RecipeItemReplace();
+                                $recipe_replace->updateOrCreate(
+                                    [
+                                        'recipe_item_id' => $recipe_item->id,
+                                        'nomenklatura_to_id' => $r_nomenklatura_id
+                                    ],
+                                    [
+                                        'recipe_item_id' => $recipe_item->id,
+                                        'nomenklatura_to_id' => $r_nomenklatura_id,
+                                        'comment' => self::$comment,
+                                        'kolvo_from' => 1,
+                                        'kolvo_to' => $kolvo_to
+                                    ]
+                                )->save();
+                                $replaced_nomenklatura[] = $r_nomenklatura_id;
                                 // кол-во заменяемого
-                                $replace_kolvo = $r_ostatok >= $production_component->kolvo ? $production_component->kolvo : $r_ostatok;
-                                // добавляем замену
-                                $save_to_recipe = $this->faker->numberBetween(0, 1);
-                                $replacements[] = [
-                                    'production_id' => $production->id,
-                                    'component_id' => $production_component->id,
-                                    'nomenklatura_from_id' => $deficit_nomenklatura_id,
-                                    'nomenklatura_to_id' => $r_nomenklatura_id,
-                                    'kolvo_from' => 1,
-                                    'kolvo_to' => 1,
-                                    'save_to_recipe' => $save_to_recipe
-                                ];
-
+                                $replace_kolvo = $r_ostatok > $recipe_item_kolvo_by_production ? $recipe_item_kolvo_by_production : $r_ostatok;
                                 // изменяем остаток
                                 $remains[$r_nomenklatura_id] -= $replace_kolvo;
                                 // добавляем компонент
@@ -1583,81 +1660,11 @@ class ApiTest extends TestCase
                                 ];
                                 // изменяем кол-во остатка дефицитной строки
                                 $deficit_nomenklatura_kolvo -= $replace_kolvo;
-                                // замену в изделии сделали
-                                $has_item_replace = true;
-                                // следующая итерация
-                                continue;
+                                // замену в рецептуре сделали
+                                $has_recipe_replace = true;
+                            } else {
+                                break;
                             }
-                            // если не было замен на уровне производства
-                            if (!$has_production_replace) {
-                                // кол-во заменяемого
-                                $replace_kolvo = $r_ostatok >= $deficit_nomenklatura_kolvo ? $deficit_nomenklatura_kolvo : $r_ostatok;
-                                // добавляем замену
-                                $save_to_recipe = $this->faker->numberBetween(0, 1);
-                                $replacements[] = [
-                                    'production_id' => $production->id,
-                                    'component_id' => 1,
-                                    'nomenklatura_from_id' => $deficit_nomenklatura_id,
-                                    'nomenklatura_to_id' => $r_nomenklatura_id,
-                                    'kolvo_from' => 1,
-                                    'kolvo_to' => 1,
-                                    'save_to_recipe' => $save_to_recipe
-                                ];
-
-                                // изменяем остаток
-                                $remains[$r_nomenklatura_id] -= $replace_kolvo;
-                                // добавляем компонент
-                                $production_components[] = [
-                                    'nomenklatura_id' => $r_nomenklatura_id,
-                                    'kolvo' => $replace_kolvo,
-                                    'replaced' => true
-                                ];
-                                // изменяем кол-во остатка дефицитной строки
-                                $deficit_nomenklatura_kolvo -= $replace_kolvo;
-                                // замену в производстве сделали
-                                $has_production_replace = true;
-                                // следующая итерация
-                                continue;
-                            }
-                            // остальные замены на уровне замен в рецептуре
-
-                            // найдем строку рецептуры, которую заменяем
-                            $recipe_item = RecipeItem::where('recipe_id', $production->recipe_id)->where('nomenklatura_id', $deficit_nomenklatura_id)->get()->first();
-                            // необходимое кол-во для производства по строке рецептуры
-                            $recipe_item_kolvo_by_production = $recipe_item->kolvo * $production->kolvo;
-                            $kolvo_to = $this->faker->numberBetween(0, 2) == 0 ? 0.5 : 1;
-                            // необходимое кол-во для замены по строке рецептуры
-                            $recipe_item_kolvo_by_production = $recipe_item->kolvo * $kolvo_to * $production->kolvo;
-                            // делаем замену
-                            $recipe_replace = new RecipeItemReplace();
-                            $recipe_replace->updateOrCreate(
-                                [
-                                    'recipe_item_id' => $recipe_item->id,
-                                    'nomenklatura_to_id' => $r_nomenklatura_id
-                                ],
-                                [
-                                    'recipe_item_id' => $recipe_item->id,
-                                    'nomenklatura_to_id' => $r_nomenklatura_id,
-                                    'comment' => self::$comment,
-                                    'kolvo_from' => 1,
-                                    'kolvo_to' => $kolvo_to
-                                ]
-                            )->save();
-                            $replaced_nomenklatura[] = $r_nomenklatura_id;
-                            // кол-во заменяемого
-                            $replace_kolvo = $r_ostatok > $recipe_item_kolvo_by_production ? $recipe_item_kolvo_by_production : $r_ostatok;
-                            // изменяем остаток
-                            $remains[$r_nomenklatura_id] -= $replace_kolvo;
-                            // добавляем компонент
-                            $production_components[] = [
-                                'nomenklatura_id' => $r_nomenklatura_id,
-                                'kolvo' => $replace_kolvo,
-                                'replaced' => true
-                            ];
-                            // изменяем кол-во остатка дефицитной строки
-                            $deficit_nomenklatura_kolvo -= $replace_kolvo;
-                            // замену в рецептуре сделали
-                            $has_recipe_replace = true;
                         }
                     });
                     // если в ходе проверки не были сделаны замены на уровне рецептур и изделий - следующее производство
@@ -1721,25 +1728,40 @@ class ApiTest extends TestCase
      *
      * @depends testCreateReplacesForProduction
      * @param  int $production_id
-     * @return void
+     * @return int $production_id
      */
-    public function testSetActiveProductionWithReplaces(int $production_id)
+    public function testSetActiveProductionWithReplaces(int $production_id):int
     {
         if ($production_id > 1) {
             // пытаемся провести и сравниваем кол-во недостающих номенклатур
             $url = $this->api_pref . "productions/" . $production_id . "/post";
             $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, ['is_active' => 1]);
-            try {
+            // try {
                 $response->assertStatus(202);
-            } catch (\Exception $e) {
-                dd($production_id, $response);
-            }
+            // } catch (\Exception $e) {
+            //     dd($production_id, $response);
+            // }
             $response->assertJson([
                 "is_error" => false,
             ]);
             $p = Production::find($production_id);
-            $this->assertTrue($this->checkRemains($p->sklad_id));
+            $check_remains = $this->checkRemains($p->sklad_id);
+
+            $this->assertTrue($check_remains);
         }
+        return $production_id;
+    }
+
+    public function testCalcComponentsForActiveProduction(int $production_id): int
+    {
+        if ($production_id>1) {
+            $p = Production::find($production_id);
+            $items = $p->items()->get();
+            foreach($items as $item) {
+                
+            }
+        }
+        return $production_id;
     }
 
     // TODO
@@ -1844,10 +1866,10 @@ class ApiTest extends TestCase
         $productions = Production::where('comment', self::$comment)->where('is_active', '=', 1)->get();
         foreach ($productions as $production) {
             // все произведенные изделия
-            $items = $production->items();
+            $items = $production->items()->get();
             // списываем все компоненты
             foreach ($items as $item) {
-                $components = $item->components();
+                $components = $item->components()->get();
                 foreach ($components as $component) {
                     $nomenklatura = Nomenklatura::find($component->nomenklatura_id);
                     if ($nomenklatura->is_usluga == 0) $remains->push([
@@ -1891,6 +1913,8 @@ class ApiTest extends TestCase
         $ostatki_by_sklad = $nomenklatura_by_sklad->map(function ($ostatki_by_sklad) {
             return $ostatki_by_sklad->map(function ($ostatki_by_nomenklatura) {
                 return $ostatki_by_nomenklatura->sum('kolvo');
+            })->filter(function($remains){
+                return $remains>0;
             })->sortKeys();
         })->toArray();
         return $ostatki_by_sklad;
