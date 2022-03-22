@@ -12,4 +12,9 @@ Homestead.json
 Homestead.yaml
 npm-debug.log
 yarn-error.log
-.vscode/launch.json
+launch.json
+.DS_Store
+.gitignore
+package-lock.json
+.gitignore
+config/database.php
