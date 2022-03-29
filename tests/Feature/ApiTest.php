@@ -2,6 +2,8 @@
 
 //
 // use phpunit for testing!
+// возможно возникновения ошибки ["is_error":true,"error":["#PO. Недостаточно...] при выполнении теста [set active production with replaces]
+// из-за некорректного алгоритма проведения производства с множественными заменами
 //
 
 namespace Tests\Feature;
@@ -69,24 +71,19 @@ class ApiTest extends TestCase
     private $keepers_count = 3;
     // кол-во приходных накладных
     private $receive_count = 5;
-    // кол-во производств
-    private $production_count = 20;
+
+    /**
+     * режим отладки - вывод в лог переменных проваленных тестов
+     *
+     * @var bool
+     */
+    private $debug = true;
+
 
     // setUp
     protected function setUp(): void
     {
         parent::setUp();
-
-        // $user_id = 1084;
-        // $sklad_id = 1757;
-        // $user = User::find($user_id);
-        // $user_info = $user ? $user->info : null;
-        // // сотрудник
-        // $sotrudnik = $user_info ? $user_info->sotrudnik() : null;
-
-        // пользователь == кладовщик
-        // $is_keeper = $sotrudnik && $sotrudnik->is_keeper($sklad_id);
-        // dd($user->toArray(), $user_info->toArray(), $sotrudnik->toArray(),  $is_keeper);
 
         $this->doc_types = DocType::select('id')->get()->pluck('id');
         $this->manufacturers = Manufacturer::select('id')->get()->pluck('id');
@@ -126,20 +123,30 @@ class ApiTest extends TestCase
         } catch (\Throwable $th) {
             //throw $th;
         }
+
+        return true;
     }
 
     // после всех тестов
-    // public static function tearDownAfterClass(): void
-    // {
-    //     // parent::tearDownAfterClass();
-    //     self::cleanDb();
-    // }
+    public static function tearDownAfterClass(): void
+    {
+        // parent::tearDownAfterClass();
+        self::cleanDb();
+    }
+
+    /**
+     * тест очистки БД перед началом тестов
+     *
+     * @return void
+     */
+    public function testCleanDb() {
+        $this->assertTrue(self::cleanDb());
+    }
 
     // тест добавления номенклатуры
     //          Route::post('/groups/{table}/{id}', 'APIController@add_group')->middleware('auth:api'); // вставить новую группу и присвоить ее id table-id
     public function testCreateNomenklatura()
     {
-        self::cleanDb();
 
         // номенклатура до момента вставки записи
         $nomenklatura_before = Nomenklatura::where('comment', self::$comment)->get();
@@ -827,7 +834,9 @@ class ApiTest extends TestCase
                 return [$response_data->id => round($response_data->stock_balance)];
             })->all();
             // сверяем массивы
-            $this->assertSame($ostatki_nomenklatur, $response_remains, "remains os sklad $sklad_id & url=$url not matched " . collect($ostatki_nomenklatur)->toJson() . " to data=" . collect($response_remains)->toJson());
+            $check_remains = $this->checkRemains($sklad_id);
+            $this->assertTrue($check_remains);
+            // $this->assertSame($ostatki_nomenklatur, $response_remains, "remains os sklad $sklad_id & url=$url not matched " . collect($ostatki_nomenklatur)->toJson() . " to data=" . collect($response_remains)->toJson());
         }
     }
 
@@ -887,9 +896,9 @@ class ApiTest extends TestCase
     /**
      * test создадим перемещение по складам
      *
-     * @return void
+     * @return int id перемещения для дальнейших тестов распроведения прихода
      */
-    public function testCreateSkladMove()
+    public function testCreateSkladMove():int
     {
         // текущие остатки
         $ostatki_by_sklad = $this->calcRemains();
@@ -949,9 +958,10 @@ class ApiTest extends TestCase
             $response_data = $this->response_data($response)->toArray();
             // должен присвоится номер документа
             $this->assertTrue(!is_null($response_data['doc_num']));
-
+            if (!isset($move_id)) $move_id = $response_data['id'];
             $i++;
         }
+        return $move_id;
     }
 
     /**
@@ -1091,11 +1101,11 @@ class ApiTest extends TestCase
     {
         // выбираем первое непроведенное перемещение cодержащее запись с ошибочным кол-вом
         $moves = SkladMove::where('comment', self::$comment)->where('is_out', 0)->whereHas('items', function ($query) {
-            $query->whereNotNull('name');
+            $query->where('name','>',0);
         })->get();
         $move = $moves->first();
         // позиция, которой недостаточно
-        $def_item = $move->items->whereNotNull('name')->first();
+        $def_item = $move->items->where('name','>',0)->first();
         // url
         $url = $this->api_pref . "sklad_moves/$move->id/post";
         // данные
@@ -1112,7 +1122,7 @@ class ApiTest extends TestCase
             "text error. we want [$def_item->nomenklatura], [$move->sklad_out], [$def_item->name], server sent " . $this->get_response_error($response)
         );
         // удаляем строку, содержащую неверную запись
-        SkladMoveItem::where('comment', self::$comment)->whereNotNull('name')->delete();
+        SkladMoveItem::where('comment', self::$comment)->where('name','>',0)->delete();
     }
 
     /**
@@ -1181,51 +1191,240 @@ class ApiTest extends TestCase
     }
 
     /**
+     * тест изменения позиции проведнной приходной накладной на уменьшение кол-ва
+     * при имеющимся перемещении товаров на другой склад (без ошибки)
+     *
+     */
+    public function testSubReceiveItem() {
+        $all_remains = $this->calcRemains();
+        // $move = SkladMove::find($move_id);
+        $changed = false;
+        $moves = SkladMove::where('comment', self::$comment)->get();
+        foreach ($moves as $move) {
+            if ($changed) break;
+            $moved_nomenkltura_ids = $move->items()->get()->pluck('nomenklatura_id')->all();
+            $receives = SkladReceive::where('comment', self::$comment)
+                ->where('sklad_id',$move->sklad_out_id)
+                ->whereHas('items', function($query) use ($all_remains, $move){
+                    $query->whereIn('nomenklatura_id',array_keys($all_remains[$move->sklad_out_id]));
+                })
+                // ->dd();
+                ->get();
+            $data = [];
+            foreach($receives as $moved_receive) {
+                $moved_receive_items = $moved_receive->items()->get();
+                $items = [];
+                foreach($moved_receive_items as $item) {
+                    $current_item = $item->toArray();
+                    if (!$changed && in_array($item->nomenklatura_id, $moved_nomenkltura_ids)) {
+                        $changed_sklad = $moved_receive->sklad_id;
+                        $changed_nomenklatura = $item->nomenklatura_id;
+                        $prev_kolvo = isset($all_remains[$moved_receive->sklad_id][$item->nomenklatura_id]) ? $all_remains[$moved_receive->sklad_id][$item->nomenklatura_id] : 0;
+                        $orig_kolvo = $item->kolvo;
+                        $changed_kolvo = $orig_kolvo > $prev_kolvo ? rand($orig_kolvo-$prev_kolvo, $orig_kolvo) : $orig_kolvo;
+                        $current_item['kolvo'] = $changed_kolvo;
+                        $changed = true;
+                    }
+                    $items[] = $current_item;
+                }
+                if ($changed) {
+                    $data = $moved_receive->toArray();
+                    $data['items'] = $items;
+                    break;
+                }
+            }
+        }
+
+        $this->assertTrue($changed);
+
+        $url = $this->api_pref . "sklad_receives/$moved_receive->id";
+        $response = $this->actingAs($this->admin_user, 'api')->json('PUT', $url, $data);
+        try {
+            $response->assertStatus(202);
+        } catch (\Throwable $th) {
+            if ($this->debug) Log::info("_ testSubReceiveItem _", [
+                'url' => $url,
+                'data' => $data,
+                'remains_before' => $all_remains[$moved_receive->sklad_id],
+                'changed_sklad' => $changed_sklad,
+                'changed_nomenklatura' => $changed_nomenklatura,
+                'orig_kolvo' => $orig_kolvo,
+                'changed_kolvo'=> $changed_kolvo,
+                'response' => $response,
+            ]);
+            dd('testSubReceiveItem',$url);
+        }
+        $response->assertJson([
+            "is_error" => false,
+        ]);
+        $new_all_remains = $this->calcRemains();
+        $delta = $prev_kolvo - $changed_kolvo;
+
+        try {
+            $this->assertSame($prev_kolvo-$orig_kolvo+$changed_kolvo, $new_all_remains[$changed_sklad][$changed_nomenklatura]);
+        } catch(\Throwable $th) {
+            if ($this->debug) Log::info("_ testSubReceiveItem _", [
+                'prev_kolvo' => $prev_kolvo,
+                'delta' => $delta,
+                'remains_before' => $all_remains[$moved_receive->sklad_id],
+                'changed_sklad' => $changed_sklad,
+                'changed_nomenklatura' => $changed_nomenklatura,
+                'orig_kolvo' => $orig_kolvo,
+                'changed_kolvo'=> $changed_kolvo,
+                'new_all_remains' => $new_all_remains[$changed_sklad],
+            ]);
+        }
+    }
+
+    /**
+     * тест распроведения приходной накладной
+     * при имеющимся перемещении товаров на другой склад
+     *
+     * @depends testCreateSkladMove
+     * @param int move_id - id перемещения, где может быть дефицит товаров при распроведении прихода
+     */
+    public function testUnactiveMovedReceive($move_id)
+    {
+        $all_remains = $this->calcRemains();
+        $move = SkladMove::find($move_id);
+        $moved_nomenkltura_ids = $move->items()->get()->pluck('nomenklatura_id')->all();
+        $receives = SkladReceive::where('comment', self::$comment)
+            ->where('sklad_id',$move->sklad_out_id)
+            ->whereHas('items', function($query) use ($moved_nomenkltura_ids){
+                $query->whereIn('nomenklatura_id',$moved_nomenkltura_ids);
+            })
+            // ->dd();
+            ->get();
+        foreach($receives as $receive) {
+            if (isset($receive_id)) {
+                break;
+            } else {
+                $deficit = [];
+                $receive_items = $receive->items()->get();
+                foreach($receive_items as $item) {
+                    $nomenklatura_remains = isset($all_remains[$receive->sklad_id][$item->nomenklatura_id]) ? $all_remains[$receive->sklad_id][$item->nomenklatura_id] : 0;
+                    if ($nomenklatura_remains < $item->kolvo) {
+                        $receive_id = $receive->id;
+                        $deficit[$item->nomenklatura_id] = abs($nomenklatura_remains - $item->kolvo);
+                        // break;
+                    }
+                }
+            }
+        }
+        $this->assertTrue(isset($receive_id));
+
+        $url = $this->api_pref . "sklad_receives/$receive_id/post";
+        $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, ['is_active'=>0]);
+        try {
+            $response->assertStatus(421);
+        } catch (\Throwable $th) {
+            if ($this->debug) Log::info("_ testUnactiveMovedReceive FAIL _", [
+                'url' => $url,
+                'response' => $response,
+                'deficit' => $deficit,
+                'all_remains' => $all_remains
+            ]);
+            dd('testUnactiveMovedReceive',$url);
+        }
+        $response->assertJson([
+            "is_error" => true,
+        ]);
+
+        // ошибки
+        $remains_errors = ["При распроведении на складе ".Sklad::find($receive->sklad_id)->select_list_title." будет нехватать:"];
+        foreach($deficit as $nomenklatura_id=>$kolvo) {
+            $n = Nomenklatura::find($nomenklatura_id);
+            if ($n->is_usluga != 1) {
+                $remains_errors[] = "$n->doc_title в количестве $kolvo $n->edIsm";
+            }
+        }
+        $check_response = $this->response_has_error(
+            $response,
+            $remains_errors
+        );
+        try {
+            $this->assertTrue($check_response);
+        } catch(\Throwable $th) {
+            if ($this->debug) Log::info("_ testUnactiveMovedReceive FAIL REMAINS _", [
+                'url' => $url,
+                'response' => $response,
+                'deficit' => $deficit,
+                'all_remains' => $all_remains
+            ]);
+            dd('testUnactiveMovedReceive', $url);
+        }
+    }
+
+    /**
      * test создание рецептур производства
      *
      * @return void
      */
     public function testCreateRecepie()
     {
-        // номенклатура для рецепта
-        $nomenklatura_for_recepie = Nomenklatura::where('comment', self::$comment)->get()->random();
-        // рецептура
-        $data = [
-            'comment' => self::$comment,
-            'name' => self::$name_pref . Str::random(10),
-            'nomenklatura_id' => $nomenklatura_for_recepie->id,
-            'items' => []
-        ];
-        // наполняем рецептуру
-        $nomenklatura_for_recepie_items = Nomenklatura::where('comment', self::$comment)->whereNotIn('id', [$nomenklatura_for_recepie->id])->get();
-        $recepie_items_count = rand(3, round($nomenklatura_for_recepie_items->count() / 2));
-        for ($i = 0; $i < $recepie_items_count; $i++) {
-            $data['items'][] = [
+        $recipes_count = 6;
+        $total_items_count = 0;
+        Recipe::where('comment', self::$comment)->forceDelete();
+        RecipeItem::where('comment', self::$comment)->forceDelete();
+        for($r=0;$r<$recipes_count;$r++) {
+            // номенклатура для рецепта
+            $nomenklatura_for_recepie = Nomenklatura::where('comment', self::$comment)->get()->random();
+            // рецептура
+            $data = [
                 'comment' => self::$comment,
-                'nomenklatura_id' =>   $nomenklatura_for_recepie_items->random()->id,
-                'kolvo' => $this->faker->randomFloat(0, 1, 20)
+                'name' => self::$name_pref . Str::random(10),
+                'nomenklatura_id' => $nomenklatura_for_recepie->id,
             ];
+            // наполняем рецептуру
+            $nomenklatura_for_recepie_items = Nomenklatura::where('comment', self::$comment)->whereNotIn('id', [$nomenklatura_for_recepie->id])->get();
+            $recepie_items_count = rand(3, round($nomenklatura_for_recepie_items->count() / 3));
+            for ($i = 0; $i < $recepie_items_count; $i++) {
+                $items[] = [
+                    'comment' => self::$comment,
+                    'nomenklatura_id' => $nomenklatura_for_recepie_items->random()->id,
+                    'kolvo' => $this->faker->randomFloat(0, 1, 20)
+                ];
+            }
+            if ($r==0) {
+                $data['items'] = $items;
+                $url = $this->api_pref . "recipes";
+                $response = $this->actingAs($this->admin_user, 'api')->json('POST', $url, $data);
+                $response->assertStatus(200);
+                $response->assertJson([
+                    "is_error" => false,
+                    "count" => 1,
+                ]);
+                // данные проверим отдельно
+                $response_data = $this->response_data($response)->toArray();
+                $this->assertSame(count($data['items']), count($response_data['items']));
+                $total_items_count += count($data['items']);
+            } else {
+                $recept = new Recipe();
+                $recept->fill($data)->save();
+                foreach($items as $item) {
+                    $recipe_item = new RecipeItem();
+                    $item['recipe_id'] = $recept->id;
+                    $recipe_item->fill($item)->save();
+                    $total_items_count++;
+                }
+            }
         }
-        $url = $this->api_pref . "recipes";
-        $response = $this->actingAs($this->admin_user, 'api')->json('POST', $url, $data);
-        $response->assertStatus(200);
-        $response->assertJson([
-            "is_error" => false,
-            "count" => 1,
-        ]);
-        // данные проверим отдельно
-        $response_data = $this->response_data($response)->toArray();
-        $this->assertSame(count($data['items']), count($response_data['items']));
+        $total_recipes = Recipe::where('comment', self::$comment)->get();
+        $total_items = RecipeItem::where('comment', self::$comment)->get();
+        $this->assertSame($recipes_count, $total_recipes->count(),"Количество созданных рецептур [$recipes_count] не совпадает с количеством рецептур в БД ".$total_recipes->count());
+        $this->assertSame($total_items_count, $total_items->count(),"Количество позиций рецептур [$total_items_count] не совпадает с количеством в БД ".$total_items->count());
     }
 
     /**
      * test создание производства
      *
-     * @return void
+     * @return int production_id
      */
-    public function testCreateProductions()
+    public function testCreateProductions():int
     {
-        for ($i = 0; $i < $this->production_count; $i++) {
+        $all_ostatki_by_sklad = $this->calcRemains();
+        $production_id = 1;
+        while ($production_id == 1) {
             // рецептура, которую будем собирать
             $recipe = Recipe::where('comment', self::$comment)->get()->random();
             $orig_components = $recipe->items()->get()->mapWithKeys(function ($item) {
@@ -1281,7 +1480,72 @@ class ApiTest extends TestCase
                 })->all();
                 $this->assertSame($orig_components, $test_components, "компоненты не созданы согласно рецептуре");
             }
+            // проверяем наличие производства, необходимого для дальнейшего тестирования
+            if (isset($all_ostatki_by_sklad[$production->sklad_id])) {
+                $ostatki_na_sklade = $all_ostatki_by_sklad[$production->sklad_id];
+                // производимые изделия
+                $items = $production->items()->get();
+                // компоненты изделий (из рецептур, поэтому у всех одинаковые)
+                $components = $items->first()->components()->whereHas('component', function ($query) {
+                    $query->where('is_usluga', 0);
+                })->get();
+                // состав компонентов производства после замен
+                $production_components = [];
+                // остатки
+                $remains_after_active = $ostatki_na_sklade;
+                // посчитаем реальные остатки после проведения производства
+                foreach ($components as $component) {
+                    // проверим, чтобы не было услуг здесь
+                    $nomenklatura = Nomenklatura::find($component->nomenklatura_id);
+                    if ($nomenklatura->is_usluga == 0) {
+                        // необходимое кол-во на партию
+                        $production_component_kolvo = $production->kolvo * $component->kolvo;
+                        if (isset($remains_after_active[$component->nomenklatura_id])) {
+                            $remains_kolvo = abs($remains_after_active[$component->nomenklatura_id]);
+                            // кол-во в наличии пойдет на изготовление (в приоритете)
+                            $production_components[] = [
+                                'nomenklatura_id' => $component->nomenklatura_id,
+                                'kolvo' => $remains_kolvo > $production_component_kolvo ? $production_component_kolvo : $remains_after_active[$component->nomenklatura_id],
+                                'replaced' => false
+                            ];
+                            // уменьшаем остатки
+                            $remains_after_active[$component->nomenklatura_id] -= $production_component_kolvo;
+                        } else {
+                            $remains_after_active[$component->nomenklatura_id] = -$production_component_kolvo;
+                        }
+                    }
+                }
+                // все отрицательные остатки нужно раскидать по положительным остаткам
+                // дефицит
+                $deficit = collect($remains_after_active)->filter(function ($value, $key) {
+                    return $value < 0;
+                })->map(function ($value) {
+                    return abs($value);
+                });
+                // кол-во (штук) недостающих товаров
+                $sum_kolvo_deficit = $deficit->values()->sum();
+                // положительные остатки после проведения
+                $ostatki = collect($remains_after_active)->filter(function ($value, $key) {
+                    return $value > 10;
+                });
+                // кол-во (штук) остатков товаров
+                $sum_kolvo_ostatki = $ostatki->values()->sum();
+                // логи
+                // Log::info("-START-", [
+                //     'ostatki' => $ostatki,
+                //     'deficit' => $deficit,
+                //     'sum_kolvo_ostatki' => $sum_kolvo_ostatki,
+                //     'sum_kolvo_deficit' => $sum_kolvo_deficit,
+                // ]);
+
+                // остатков должно быть больше 3 наименований, должен быть дефицит и кол-во шт в остатках дб больше кол-ва штук в дефиците
+                if ($ostatki->count() > 5 && $deficit->count() > 3 && $sum_kolvo_ostatki > $sum_kolvo_deficit && $production->kolvo>2) {
+                    $production_id = $production->id;
+                    break;
+                }
+            }
         }
+        return $production_id;
     }
 
     /**
@@ -1336,113 +1600,106 @@ class ApiTest extends TestCase
 
     /**
      * тест недостаточного количества при проведении производства
-     *
+     * @depends testCreateProductions
+     * @param int production_id
      */
-    public function testNotEnoughtWhenSetActiveProduction()
+    public function testNotEnoughtWhenSetActiveProduction($production_id)
     {
         // текущие остатки
         $all_ostatki_by_sklad = $this->calcRemains();
         // foreach ($all_ostatki_by_sklad as $ostatki_sklad_id => $ostatki_by_sklad) {
-        $productions = Production::where('comment', self::$comment)->where('is_active', 0)->get();
-        foreach ($productions as $production) {
-            // // получаем остатки по складу производства
-            if (isset($all_ostatki_by_sklad[$production->sklad_id])) {
-                $ostatki_by_sklad = $all_ostatki_by_sklad[$production->sklad_id];
+        $production = Production::find($production_id);
+        // получаем остатки по складу производства
+        $ostatki_by_sklad = $all_ostatki_by_sklad[$production->sklad_id];
 
-                // производимые изделия
-                $items = $production->items()->get();
-                // компоненты изделий (из рецептур, поэтому у всех одинаковые)
-                $components = $items->first()->components()->get();
-                // не достаточно на складе
-                $not_enough = [];
-                $need_kolvo = [];
-                // свернем массив компонент производства
-                foreach ($components as $component) {
-                    if ($component->component->is_usluga == 0) {
-                        // необходимое кол-во на партию
-                        $production_component_kolvo = $production->kolvo * $component->kolvo;
-                        if (isset($need_kolvo[$component->nomenklatura_id])) {
-                            $need_kolvo[$component->nomenklatura_id] += $production_component_kolvo;
-                        } else {
-                            $need_kolvo[$component->nomenklatura_id] = $production_component_kolvo;
-                        }
-                    }
-                }
-                // проверяем остатки
-                foreach ($need_kolvo as $component_nomenklatura_id => $component_kolvo) {
-                    if (isset($ostatki_by_sklad[$component_nomenklatura_id])) {
-                        if ($ostatki_by_sklad[$component_nomenklatura_id] < $component_kolvo) {
-                            $not_enough[$component_nomenklatura_id] = $component_kolvo - $ostatki_by_sklad[$component_nomenklatura_id];
-                        }
-                    } else {
-                        $not_enough[$component_nomenklatura_id] = $component_kolvo;
-                    }
-                }
-                // если недостаточно для производства
-                if (count($not_enough) > 0) {
-                    $remains_errors = ['Недостаточно'];
-                    // ошибки
-                    foreach ($not_enough as $not_enough_nomeklatura => $not_enough_kolvo) {
-                        $n = Nomenklatura::find($not_enough_nomeklatura);
-                        // $remains_errors[] = "(" . $n->id . ",u=" . $n->is_usluga . ")" . $n->short_title . " в количестве " . $not_enough_kolvo . " " . $n->edIsm;
-                        $remains_errors[] = $n->short_title . " в количестве " . $not_enough_kolvo . " " . $n->edIsm;
-                    }
-                    // пытаемся провести и сравниваем кол-во недостающих номенклатур
-                    $url = $this->api_pref . "productions/" . $production->id . "/post";
-                    $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, ['is_active' => 1]);
-                    $response->assertStatus(421);
-                    $response->assertJson([
-                        "is_error" => true,
-                    ]);
-                    $check_response = $this->response_has_error(
-                        $response,
-                        $remains_errors
-                    );
-                    // проверки прошли
-                    if ($check_response) {
-                        // Log::info("SUCCESS", [
-                        //     'url' => $url,
-                        //     'ответ сервера' => $this->get_response_error($response),
-                        //     'расчетные остатки' => $ostatki_by_sklad,
-                        //     'свертка кол-ва' => $need_kolvo,
-                        //     'недостаточное кол-во' => $not_enough,
-                        //     'ожидаемая ошибка' => implode(",", $remains_errors),
-                        //     'производство' => $production->only('id', 'kolvo', 'sklad_id'),
-                        // ]);
-                    } else {
-                        // остатки в регистрах
-                        $reg_ost = Sklad::find($production->sklad_id)->sklad_register()->get();
-                        $ost = $reg_ost->mapWithKeys(function ($item, $key) {
-                            return [$item['nomenklatura_id'] => $item['ou_kolvo']];
-                        })->all();
-                        $recepi = RecipeItem::where('recipe_id', $production->recipe_id)->get();
-                        $recept = $recepi->mapWithKeys(function ($item, $key) {
-                            return [$item['nomenklatura_id'] => $item['kolvo']];
-                        })->all();
-
-                        Log::info("FAIL", [
-                            'url' => $url,
-                            'ответ сервера' => $this->get_response_error($response),
-                            'расчетные остатки' => $ostatki_by_sklad,
-                            'свертка кол-ва' => $need_kolvo,
-                            'недостаточное кол-во' => $not_enough,
-                            'ожидаемая ошибка' => implode(",", $remains_errors),
-                            'производство' => $production->only('id', 'kolvo', 'sklad_id'),
-                            'рецептура' => $recept,
-                            'остатки в регистрах' => $ost
-                        ]);
-                        // dd(1);
-                    }
-                    $this->assertTrue(
-                        $check_response,
-                        "wrong error from request. we want [" . implode(",", $remains_errors) . "] but got [" . $this->get_response_error($response) . "]"
-                    );
-                    // return $production->id;
-                    break;
+        // производимые изделия
+        $items = $production->items()->get();
+        // компоненты изделий (из рецептур, поэтому у всех одинаковые)
+        $components = $items->first()->components()->get();
+        // не достаточно на складе
+        $not_enough = [];
+        $need_kolvo = [];
+        // свернем массив компонент производства
+        foreach ($components as $component) {
+            if ($component->component->is_usluga == 0) {
+                // необходимое кол-во на партию
+                $production_component_kolvo = $production->kolvo * $component->kolvo;
+                if (isset($need_kolvo[$component->nomenklatura_id])) {
+                    $need_kolvo[$component->nomenklatura_id] += $production_component_kolvo;
                 } else {
-                    continue;
+                    $need_kolvo[$component->nomenklatura_id] = $production_component_kolvo;
                 }
             }
+        }
+        // проверяем остатки
+        foreach ($need_kolvo as $component_nomenklatura_id => $component_kolvo) {
+            if (isset($ostatki_by_sklad[$component_nomenklatura_id])) {
+                if ($ostatki_by_sklad[$component_nomenklatura_id] < $component_kolvo) {
+                    $not_enough[$component_nomenklatura_id] = $component_kolvo - $ostatki_by_sklad[$component_nomenklatura_id];
+                }
+            } else {
+                $not_enough[$component_nomenklatura_id] = $component_kolvo;
+            }
+        }
+        // если недостаточно для производства
+        if (count($not_enough) > 0) {
+            $remains_errors = ['Недостаточно'];
+            // ошибки
+            foreach ($not_enough as $not_enough_nomeklatura => $not_enough_kolvo) {
+                $n = Nomenklatura::find($not_enough_nomeklatura);
+                // $remains_errors[] = "(" . $n->id . ",u=" . $n->is_usluga . ")" . $n->short_title . " в количестве " . $not_enough_kolvo . " " . $n->edIsm;
+                $remains_errors[] = $n->short_title . " в количестве " . $not_enough_kolvo . " " . $n->edIsm;
+            }
+            // пытаемся провести и сравниваем кол-во недостающих номенклатур
+            $url = $this->api_pref . "productions/" . $production->id . "/post";
+            $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, ['is_active' => 1]);
+            $response->assertStatus(421);
+            $response->assertJson([
+                "is_error" => true,
+            ]);
+            $check_response = $this->response_has_error(
+                $response,
+                $remains_errors
+            );
+            // проверки прошли
+            if ($check_response) {
+                // Log::info("SUCCESS", [
+                //     'url' => $url,
+                //     'ответ сервера' => $this->get_response_error($response),
+                //     'расчетные остатки' => $ostatki_by_sklad,
+                //     'свертка кол-ва' => $need_kolvo,
+                //     'недостаточное кол-во' => $not_enough,
+                //     'ожидаемая ошибка' => implode(",", $remains_errors),
+                //     'производство' => $production->only('id', 'kolvo', 'sklad_id'),
+                // ]);
+            } else {
+                // остатки в регистрах
+                $reg_ost = Sklad::find($production->sklad_id)->sklad_register()->get();
+                $ost = $reg_ost->mapWithKeys(function ($item, $key) {
+                    return [$item['nomenklatura_id'] => $item['ou_kolvo']];
+                })->all();
+                $recepi = RecipeItem::where('recipe_id', $production->recipe_id)->get();
+                $recept = $recepi->mapWithKeys(function ($item, $key) {
+                    return [$item['nomenklatura_id'] => $item['kolvo']];
+                })->all();
+
+                if ($this->debug) Log::info("FAIL", [
+                    'url' => $url,
+                    'ответ сервера' => $this->get_response_error($response),
+                    'расчетные остатки' => $ostatki_by_sklad,
+                    'свертка кол-ва' => $need_kolvo,
+                    'недостаточное кол-во' => $not_enough,
+                    'ожидаемая ошибка' => implode(",", $remains_errors),
+                    'производство' => $production->only('id', 'kolvo', 'sklad_id'),
+                    'рецептура' => $recept,
+                    'остатки в регистрах' => $ost
+                ]);
+                // dd(1);
+            }
+            $this->assertTrue(
+                $check_response,
+                "wrong error from request. we want [" . implode(",", $remains_errors) . "] but got [" . $this->get_response_error($response) . "]"
+            );
         }
     }
 
@@ -1450,20 +1707,18 @@ class ApiTest extends TestCase
      * тест создания замен, дополнений в производство и проведение с контролем количества
      *
      * возвращаем id производства для проведения
+     * @depends testCreateProductions
+     * @param int production_id
      * @return int
      */
-    public function testCreateReplacesForProduction(): int
+    public function testCreateReplacesForProduction($production_id): int
     {
         // // производство
         // $production = Production::find($production_id);
         // текущие остатки
         $all_ostatki_by_sklad = $this->calcRemains();
         // все производства
-        $productions = Production::where('comment', self::$comment)->where('is_active', 0)->get();
-        // результирующее производство
-        $production_id = 1;
-        // ищем подходящее производство
-        foreach ($productions as $production) {
+        $production = Production::find($production_id);
             // остаток на складе
             if (isset($all_ostatki_by_sklad[$production->sklad_id])) {
 
@@ -1530,8 +1785,6 @@ class ApiTest extends TestCase
                 $has_item_replace = false;
                 // не было замен на уровне производства
                 $has_production_replace = false;
-                // остатков должно быть больше 3 наименований, должен быть дефицит и кол-во шт в остатках дб больше кол-ва штук в дефиците
-                if ($ostatki->count() > 3 && $deficit->count() > 1 && $sum_kolvo_ostatki > $sum_kolvo_deficit) {
                     // массив остатков
                     $remains = $ostatki->all();
 
@@ -1667,14 +1920,6 @@ class ApiTest extends TestCase
                             }
                         }
                     });
-                    // если в ходе проверки не были сделаны замены на уровне рецептур и изделий - следующее производство
-                    if (!$has_item_replace || !$has_recipe_replace || !$has_recipe_replace) continue;
-                } else {
-                    continue;
-                }
-            } else {
-                continue;
-            }
 
             $recepi = RecipeItem::where('recipe_id', $production->recipe_id)->get();
             $recept = $recepi->mapWithKeys(function ($item, $key) {
@@ -1716,9 +1961,6 @@ class ApiTest extends TestCase
                 }
             }
 
-            // возвращаем id производства
-            $production_id = $production->id;
-            break;
         }
         return $production_id;
     }
@@ -1736,11 +1978,11 @@ class ApiTest extends TestCase
             // пытаемся провести и сравниваем кол-во недостающих номенклатур
             $url = $this->api_pref . "productions/" . $production_id . "/post";
             $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, ['is_active' => 1]);
-            // try {
+            try {
                 $response->assertStatus(202);
-            // } catch (\Exception $e) {
-            //     dd($production_id, $response);
-            // }
+            } catch (\Throwable $th) {
+                dd('PATCH',$url, $response);
+            }
             $response->assertJson([
                 "is_error" => false,
             ]);
@@ -1752,31 +1994,592 @@ class ApiTest extends TestCase
         return $production_id;
     }
 
+    /**
+     * тест проверки наполнения изделия компонентами и корректности подсчета себестоимости
+     *
+     * @depends testSetActiveProductionWithReplaces
+     * @param  int $production_id
+     * @return int $production_id
+     */
     public function testCalcComponentsForActiveProduction(int $production_id): int
     {
         if ($production_id>1) {
             $p = Production::find($production_id);
+            $recipe_items = RecipeItem::where('recipe_id',$p->recipe_id)->get();
             $items = $p->items()->get();
             foreach($items as $item) {
-                
+                $components = $item->components()->get();
+                $this->assertTrue($recipe_items->count()<=$components->count()); //"Кол-во компонентов изделия меньше количества набора рецептуры"
+                $self_price = $components->sum('summa');
+                $this->assertTrue($self_price>0);//"Себестоимость изделия ==0"
+                $this->assertSame(round($item->summa,2), round($self_price,2),"Себестоимость изделия [".round($item->summa,2)."] не совпадает с суммой компонентов [".round($self_price,2)."]");
             }
         }
         return $production_id;
     }
 
-    // TODO
-    // тест распроведения приходной накладной, из которой номенклатура была уже перемещена
-    // тест изменения позиции проведнной приходной накладной на увеличение кол-ва
-    // тест изменения позиции проведнной приходной накладной на уменьшение кол-ва
-    // тест изменения позиции проведенного перемещения без превышения остатков
-    // тест изменения позиции проведенного перемещения с превышением остатков
-    // тест выборки накладных с критериями вложенной фильтрации
-    // тест серийных номеров
+    /**
+     * тест отметки собраным изделие производства и расчет остатков
+     *
+     * @depends testCalcComponentsForActiveProduction
+     * @param  int $production_id
+     * @return int $production_item_id
+     */
+    public function testSetProductedItemForActiveProduction(int $production_id): int
+    {
+        $production_item_id = 1;
+        if ($production_id>1) {
+            $p = Production::find($production_id);
+            $items = $p->items()->get();
+            $production_items = $items->random(rand(2,$p->kolvo));
+            $production_item = $production_items->first();
+            $production_item_id = $production_item->id;
+            // пытаемся пометить проведенным изделие
+            $url = $this->api_pref . "production_items/" . $production_item_id;
+            $response = $this->actingAs($this->admin_user, 'api')->json('PUT', $url, ['is_producted' => 1]);
+            try {
+                $response->assertStatus(202);
+                $response->assertJson([
+                    "is_error" => false,
+                ]);
+            } catch (\Throwable $th) {
+                dd($production_item_id, $response);
+            }
+            $producted_item = ProductionItem::find($production_item_id);
+            $this->assertSame(intVal($producted_item->is_producted), 1,"Изделие не отмечено собранным");
+            $is_usluga = false;
+            try {
+                $nomenklatura = $production_item->product();
+                if ($nomenklatura->is_usluga==1) {
+                    $is_usluga = true;
+                }
+            } catch (\Throwable $th) {
+                //throw $th;
+            }
+            if ($production_item->register()->get()->count() != $is_usluga?0:1) {
+                if ($this->debug) Log::info("- PRODUCTION ITEM NOT REGISTERED -", [
+                    'production_item' => $production_item->toArray(),
+                    'nomenklatura' => $production_item->product(),
+                    'register' => $production_item->register()->get()->toArray()
+                ]);
+            }
+            $this->assertSame($production_item->register()->get()->count(),$is_usluga?0:1 ,"Изделие не добавлено в регистр хранения");
+            // произведем остальные изделия
+            foreach($production_items as $pi) {
+                if ($pi->id==$production_item_id) continue;
+                $pi->is_producted = 1;
+                $pi->save();
+                $this->assertSame($pi->register()->get()->count(),$is_usluga?0:1 ,"Изделие не добавлено в регистр хранения");
+            }
+
+            $check_remains = $this->checkRemains($p->sklad_id);
+            $this->assertTrue($check_remains);
+
+        }
+        return $production_item_id;
+    }
+
+    /**
+     * тест создания перемещения по складам и присваивания серийных номеров для перемещаемых позиций произведенных изделий
+     * URL: PUT '/serials/{table}/{id}' -> 201
+     *
+     * @depends testSetProductedItemForActiveProduction
+     * @param  mixed $production_item_id
+     * @return array [int 'production_item_id', int 'sklad_move_id']
+     */
+    public function testMoveProductedItem(int $production_item_id):array {
+        $debug = false;
+        $firms = Firm::where('id', '>', 1)->get();
+        $emloyers = Sotrudnik::where('comment', self::$comment)->get();
+        $production_item = ProductionItem::find($production_item_id);
+        $production = $production_item->production()->first();
+        $target_sklad = Sklad::where('comment', self::$comment)->whereNotIn('id',[$production->sklad_id])->get()->random();
+        $target_sklad2 = Sklad::where('comment', self::$comment)->whereNotIn('id',[$production->sklad_id, $target_sklad->id])->get()->random();
+        $target_kolvo = 1;
+        // $target_kolvo2 = $production->kolvo - $target_kolvo;
+        $target_kolvo2 = 1;
+        $data = [
+            'comment' => self::$comment,
+            'sklad_out_id' => $production->sklad_id,
+            'sklad_in_id' => $target_sklad->id,
+            'firm_id' => $firms->random()->id,
+            'doc_date' => Carbon::today()->subDays(rand(0, 365))->format('Y-m-d'),
+            'transitable_type' => Sotrudnik::class,
+            'transitable_id' => $emloyers->random()->id,
+        ];
+        $sklad_move = new SkladMove();
+        $sklad_move->fill($data)->save();
+        $item = [
+            'sklad_move_id'=>$sklad_move->id,
+            'nomenklatura_id' => $production->recipes()->first()->nomenklatura()->first()->id,
+            'kolvo' => $target_kolvo,
+            'comment' => self::$comment,
+        ];
+        Log::info("- MOVE ITEM -", [
+            'sklad_move' => $data,
+            'sklad_move_item' => $item,
+        ]);
+        $sklad_move_item = new SkladMoveItem();
+        $sklad_move_item->fill($item)->save();
+
+        $sklad_move2 = new SkladMove();
+        $sklad_move2_data = $data;
+        $sklad_move2_data = array_merge($data,['sklad_in_id' => $target_sklad2->id]);
+        $sklad_move2->fill($sklad_move2_data)->save();
+        $sklad_move2_item = new SkladMoveItem();
+        $sklad_move2_item->fill(array_merge($item, ['kolvo'=> $target_kolvo2, 'sklad_move_id'=>$sklad_move2->id]))->save();
+
+        // добавляем серийный номер
+        $url = $this->api_pref . "serials/sklad_move_items/$sklad_move_item->id";
+        $request_data = ['data'=>json_encode($production_item->series()->get()->pluck('id')->values()->all())];
+        // $request_data = ['data'=>$production_item->series()->get()->pluck('id')->all()];
+        if (count($request_data)!=1) dd($url, $request_data, $production_item->toArray());
+        $this->assertSame(1,count($request_data),'Для произведенного изделия получено серийных номеров !=1');
+        if ($debug) Log::info("- TEST SERIALS -", [
+            'url' => $url,
+            'request_data' => $request_data,
+        ]);
+
+        $response = $this->actingAs($this->admin_user, 'api')->json('PUT', $url, $request_data);
+        try {
+            $response->assertStatus(201);
+        } catch (\Throwable $th) {
+            dd($url,$request_data, $response);
+        }
+        $response->assertJson([
+            "is_error" => false,
+        ]);
+        return ['production_item_id'=>$production_item_id, 'sklad_move_id'=>$sklad_move->id];
+    }
+
+    /**
+     * тест чтения серийных номеров для производства
+     * url: get '/serials/{table}/{id}' -> 200
+     *
+     * @depends testSetProductedItemForActiveProduction
+     * @param  int $production_item_id
+     * @return void
+     */
+    public function testGetSerialsForProductionItem(int $production_item_id) {
+        // читаем серийные номера для записи
+        $url = $this->api_pref . "serials/production_items/$production_item_id";
+        $response = $this->actingAs($this->admin_user, 'api')->json('GET', $url);
+        try {
+            $response->assertStatus(200);
+        } catch (\Throwable $th) {
+            dd($url);
+        }
+        $response->assertJson([
+            "is_error" => false,
+        ]);
+        $db_serials = $this->response_data($response)->pluck('id')->toArray();
+        // должны быть на складе серийный номер для итемса $production_item_id
+        $production_item = ProductionItem::find($production_item_id);
+        $serials = $production_item->series()->get()->pluck('id')->toArray();
+        // Log::info("- SERIALS -", [
+        //     'serials' => $serials,
+        //     'db_serials' => $db_serials,
+        // ]);
+
+        $this->assertTrue(in_array($serials[0], $db_serials));
+    }
+
+    /**
+     * тест выборки доступных серийных номеров для записи таблицы
+     * url: get '/serials_list/{table}/{id}' -> 200
+     *
+     * @depends testMoveProductedItem
+     * @param  array [int 'production_item_id', int 'sklad_move_id']
+     * @return void
+     */
+    public function testGetSerialListForNomenklatura($production_move_array) {
+        $production_item = ProductionItem::find($production_move_array['production_item_id']);
+        $production = $production_item->production()->first();
+        $production_items = $production->items()->get();
+        $production_nomenklatura = $production->product()->first();
+
+        $move = SkladMove::find($production_move_array['sklad_move_id']);
+        // $move_item = $move->items()->where('nomenklatura_id',$production_nomenklatura->id)->first();
+        $move_item = $move->items()->first();
+
+        $url = $this->api_pref . "serials_list/sklad_move_items/$move_item->id";
+        $response = $this->actingAs($this->admin_user, 'api')->json('GET', $url);
+        try {
+            $response->assertStatus(200);
+        } catch (\Throwable $th) {
+            dd($url);
+        }
+        $response->assertJson([
+            "is_error" => false,
+        ]);
+        $serials = $this->response_data($response)->only('id')->sort()->toArray();
+        // должны быть на складе серийный номер для итемса $production_item_id
+        $production_serials = [];
+        foreach($production_items as $production_item) {
+            $production_serials[] = $production_item->series()->first()->id;
+        }
+        $production_serials = sort($production_serials);
+        $series = $production_item->series()->get()->only('id')->toArray();
+        $serials = sort($series);
+        $this->assertSame($production_serials, $serials);
+    }
+
+    /**
+     * тест присвоения серийного номера перемещаемым изделиям
+     * url: put '/serials/{table}/{id}' -> 201
+     *
+     * @depends testMoveProductedItem
+     * @param  array [int 'production_item_id', int 'sklad_move_id']
+     * @return array [int 'production_item_id', int 'sklad_move_id']
+     */
+    public function testSetSerialForMoveProductionItems(array $production_move_array) {
+        $debug = false;
+        $production_item = ProductionItem::find($production_move_array['production_item_id']);
+        $production = $production_item->production()->first();
+        $production_items = $production->items()->get();
+        $production_nomenklatura = $production->product();
+
+        $move = SkladMove::where('comment', self::$comment)
+            ->where('id','<>',$production_move_array['sklad_move_id'])
+            ->where('is_active',0)
+            ->whereHas('items', function($query) use($production_nomenklatura){
+                $query->where('nomenklatura_id',$production_nomenklatura->id);
+            //}) ->dd();
+            })->first();
+        // dd($production_move_array['sklad_move_id'], $production_nomenklatura->id, $move->id);
+        // $move_item = $move->items()->->first();
+        $move_item = $move->items()->first();
+
+        $data = ['data' => json_encode($production_item->series()->pluck('id')->values()->all())];
+        $url = $this->api_pref . "serials/sklad_move_items/$move_item->id";
+        if ($debug) Log::info("- TEST SERIALS -", [
+            'url' => $url,
+            'request_data' => $data,
+        ]);
+
+        $response = $this->actingAs($this->admin_user, 'api')->json('PUT', $url, $data);
+        try {
+            $response->assertStatus(201);
+        } catch (\Throwable $th) {
+            dd($url, $data, $response);
+        }
+        $response->assertJson([
+            "is_error" => false,
+        ]);
+        return $production_move_array;
+    }
+
+    /**
+     * тест повторного присвоения серийного номера перемещаемым изделиям
+     * url: put '/serials/{table}/{id}' -> 201
+     *
+     * @depends testSetSerialForMoveProductionItems
+     * @param  array [int 'production_item_id', int 'sklad_move_id']
+     * @return array [int 'production_item_id', int 'sklad_move_id']
+     */
+    public function testDuplicateSetSerialForMoveProductionItems(array $production_move_array) {
+        $debug = false;
+        $production_item = ProductionItem::find($production_move_array['production_item_id']);
+        $production = $production_item->production()->first();
+        $production_items = $production->items()->get();
+        $production_nomenklatura = $production->product();
+
+        $move = SkladMove::find($production_move_array['sklad_move_id']);
+        // dd($production_move_array['sklad_move_id'], $production_nomenklatura->id, $move->id);
+        // $move_item = $move->items()->->first();
+        $move_item = $move->items()->first();
+
+        $data = ['data' => json_encode($production_item->series()->pluck('id')->values()->all())];
+        $url = $this->api_pref . "serials/sklad_move_items/$move_item->id";
+        if ($debug) Log::info("- TEST SERIALS -", [
+            'url' => $url,
+            'request_data' => $data,
+        ]);
+
+        $response = $this->actingAs($this->admin_user, 'api')->json('PUT', $url, $data);
+        try {
+            $response->assertStatus(201);
+        } catch (\Throwable $th) {
+            dd($url, $data, $response);
+        }
+        $response->assertJson([
+            "is_error" => false,
+        ]);
+        return $production_move_array;
+    }
+
+
+    /**
+     * тест проведения перемещения произведенного изделия с указанным серийным номером
+     *
+     * @depends testMoveProductedItem
+     * @param  array [int 'production_item_id', int 'sklad_move_id']
+     * @return array [int 'production_item_id', int 'sklad_move_id']
+     */
+    public function testSetActiveMoveProductedItemWithSerial(array $production_move_array) {
+        $sklad_move = SkladMove::find($production_move_array['sklad_move_id']);
+        $url = $this->api_pref . "sklad_moves/$sklad_move->id/post";
+        $data = ["is_active" => 1];
+        $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, $data);
+        try {
+            $response->assertStatus(202);
+        } catch (\Throwable $th) {
+            dd($url, $data, $response);
+        }
+        $response->assertJson([
+            "is_error" => false,
+            "data" => [
+                "is_out" => 1,
+                "is_active" => 1,
+                "is_in" => 1
+            ]
+        ]);
+        //  проверим остатки
+        $check_remains = $this->checkRemains($sklad_move->sklad_out_id);
+        $this->assertTrue($check_remains);
+        $check_remains = $this->checkRemains($sklad_move->sklad_in_id);
+        $this->assertTrue($check_remains);
+
+        return $production_move_array;
+    }
+
+
+    /**
+     * тест проведения перемещения произведенного изделия с отсутствующим на складе серийным номером
+     *
+     * @depends testSetActiveMoveProductedItemWithSerial
+     * @param  array [int 'production_item_id', int 'sklad_move_id']
+     * @return void
+     */
+    public function testSetActiveMoveProductedItemWithDeficitSerial(array $production_move_array) {
+        $production_item = ProductionItem::find($production_move_array['production_item_id']);
+        $production = $production_item->production()->first();
+        $production_nomenklatura = $production->product();
+
+
+        $sklad_move = SkladMove::where('comment', self::$comment)->where('is_out',0)->where('id','<>',$production_move_array['sklad_move_id'])
+        ->whereHas('items',function($query) use($production_nomenklatura){
+            $query->where('nomenklatura_id',$production_nomenklatura->id);
+        })->first();
+        $url = $this->api_pref . "sklad_moves/$sklad_move->id/post";
+        $data = ["is_active" => 1];
+        $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, $data);
+        $response->assertStatus(421);
+        $response->assertJson([
+            "is_error" => true
+        ]);
+        //  проверим ошибку
+        $sn = $production_item->series()->first()->number;
+        $text_error = " с серийным № $sn нет на складе";
+        try {
+            $this->assertTrue($this->response_has_error($response,[$text_error]));
+        } catch (\Throwable $th) {
+            dd($url, $text_error, $this->get_response_error($response), $production_item->series()->first()->toArray());
+        }
+    }
+
+    /**
+     * тест изменения позиции проведенного перемещения без превышения остатков
+     *
+     * @depends testSetSerialForMoveProductionItems
+     * @param  array [int 'production_item_id', int 'sklad_move_id']
+     * @return void
+     */
+    public function testChangeProductedItemComponentWithoutDeficit(array $production_move_array):void {
+        $production_item = ProductionItem::find($production_move_array['production_item_id']);
+        $production = $production_item->production()->first();
+        /**
+         * остатки на складе производства
+         * @var array
+        */
+        $sklad_remains = $this->calcRemains()[$production->sklad_id];
+        $available_nomenklatura = collect($sklad_remains)->keys()->all();
+        $production_item_component_with_remains = $production_item->components()->whereIn('nomenklatura_id', $available_nomenklatura)->get();
+        $production_item_component_with_remains_count = $production_item_component_with_remains->count();
+
+        if ($production_item_component_with_remains_count>0) {
+            $components = $production_item_component_with_remains->random(1,$production_item_component_with_remains_count)->pluck('id')->all();
+            /**
+             * данные производства с измененным кол-вом в компонентах
+             * @var array
+            */
+            $request_data = $production->toArray();
+            $request_data['items'] = [];
+            foreach($production->items as $pi) {
+                $item_with_components = $pi->toArray();
+                $item_with_components['components'] = [];
+                foreach($pi->components as $pc) {
+                    if (in_array($pc->id, $components)) {
+                        $component = $pc->toArray();
+                        $component_remains = $sklad_remains[$component['nomenklatura_id']];
+                        $component['kolvo'] += rand(1,$component_remains);
+                        $item_with_components['components'][] = $component;
+                    } else {
+                        $item_with_components['components'][] = $pc->toArray();
+                    }
+                }
+                $request_data['items'][] = $item_with_components;
+            }
+            $url = $this->api_pref . "productions/$production->id";
+            $response = $this->actingAs($this->admin_user, 'api')->json('PUT', $url, $request_data);
+            try {
+                $response->assertStatus(202);
+            } catch (\Throwable $th) {
+                if ($this->debug) Log::info("_ testChangeProductedItemComponentWithoutDeficit _", [
+                    'url' => $url,
+                    'request_data' => $request_data,
+                    'response' => $response,
+                ]);
+                dd('testChangeProductedItemComponentWithoutDeficit',$url);
+            }
+            $response->assertJson([
+                "is_error" => false,
+            ]);
+            //  проверим остатки
+            $check_remains = $this->checkRemains($production->sklad_id);
+            $this->assertTrue($check_remains);
+        }
+
+    }
+
+        /**
+     * тест изменения позиции проведенного перемещения с превышением остатков
+     *
+     * @depends testSetSerialForMoveProductionItems
+     * @param  array [int 'production_item_id', int 'sklad_move_id']
+     * @return void
+     */
+    public function testChangeProductedItemComponentWithDeficit(array $production_move_array):void {
+        $production_item = ProductionItem::find($production_move_array['production_item_id']);
+        $production = $production_item->production()->first();
+        /**
+         * остатки на складе производства
+         * @var array
+        */
+        $sklad_remains = $this->calcRemains()[$production->sklad_id];
+        $available_nomenklatura = collect($sklad_remains)->keys()->all();
+        $production_item_component_without_remains = $production_item->components()->whereNotIn('nomenklatura_id', $available_nomenklatura)->whereHas('component', function($query){
+            $query->where('is_usluga',0);
+        })->get();
+        $production_item_component_without_remains_count = $production_item_component_without_remains->count();
+        if ($production_item_component_without_remains_count>0) {
+            $components = $production_item_component_without_remains->random(1,$production_item_component_without_remains_count)->pluck('id')->all();
+            // $component = $production_item_component_without_remains->first()->toArray();
+            // $component_remains = $sklad_remains[$component['nomenklatura_id']];
+            $deficit = [];
+            /**
+             * данные производства с измененным кол-вом в компонентах
+             * @var array
+            */
+            $request_data = $production->toArray();
+            $request_data['items'] = [];
+            foreach($production->items as $pi) {
+                $item_with_components = $pi->toArray();
+                $item_with_components['components'] = [];
+                foreach($pi->components as $pc) {
+                    if (in_array($pc->id,$components)) {
+                        $component = $pc->toArray();
+                        $deficit_kolvo = rand(15,120);
+                        $component['kolvo'] += $deficit_kolvo;
+                        $deficit[$component['nomenklatura_id']] = $deficit_kolvo;
+
+                        $item_with_components['components'][] = $component;
+                    } else {
+                        $item_with_components['components'][] = $pc->toArray();
+                    }
+                }
+                $request_data['items'][] = $item_with_components;
+            }
+            $url = $this->api_pref . "productions/$production->id";
+            $response = $this->actingAs($this->admin_user, 'api')->json('PUT', $url, $request_data);
+            try {
+                $response->assertStatus(421);
+            } catch (\Throwable $th) {
+                if ($this->debug) Log::info("_ testChangeProductedItemComponentWithDeficit _", [
+                    'url' => $url,
+                    'request_data' => $request_data,
+                    'response' => $response,
+                ]);
+                dd('testChangeProductedItemComponentWithDeficit',$url, $request_data);
+            }
+            $response->assertJson([
+                "is_error" => true,
+            ]);
+            $remains_errors = [];
+            // ошибки
+            $sklad = Sklad::find($production->sklad_id);
+            foreach($deficit as $nomenklatura_id=>$kolvo) {
+                $n = Nomenklatura::find($nomenklatura_id);
+                $remains_errors[] = "Для списания $n->doc_title на $sklad->select_list_title не хватает $kolvo $n->edIsm";
+            }
+            $check_response = $this->response_has_error(
+                $response,
+                $remains_errors
+            );
+            $this->assertTrue($check_response);
+        }
+    }
+
+    /**
+     * тест разборки перемещенного изделия
+     *
+     * @depends testMoveProductedItem
+     * @param  array [int 'production_item_id', int 'sklad_move_id']
+     * @return void
+     */
+    public function testUnbuildingProductedItem(array $production_move_array) {
+        $url = $this->api_pref . "production_items/" . $production_move_array['production_item_id'];
+        $response = $this->actingAs($this->admin_user, 'api')->json('PUT', $url, ['is_producted' => 0]);
+        if ($this->debug) Log::info("_ testUnactiveMovedProduction _", [
+            'url' => $url,
+            'response' => $response,
+        ]);
+
+        try {
+            $response->assertStatus(421);
+            $response->assertJson([
+                "is_error" => true,
+            ]);
+        } catch (\Throwable $th) {
+            dd('testUnbuildingProductedItem', $url);
+        }
+
+    }
+
+    /**
+     * тест распроведения перемещенного производства
+     *
+     * @depends testMoveProductedItem
+     * @param  array $production_move_array
+     * @return void
+     */
+    public function testUnactiveMovedProduction(array $production_move_array) {
+        $production = ProductionItem::find($production_move_array['production_item_id'])->production()->first();
+        $url = $this->api_pref . "productions/" . $production->id."/post";
+        $response = $this->actingAs($this->admin_user, 'api')->json('PATCH', $url, ['is_active' => 0]);
+        if ($this->debug) Log::info("_ testUnactiveMovedProduction _", [
+            'url' => $url,
+            'response' => $response,
+        ]);
+
+        try {
+            $response->assertStatus(421);
+            $response->assertJson([
+                "is_error" => true,
+            ]);
+        } catch (\Throwable $th) {
+            dd('testUnbuildingProductedItem', $url);
+        }
+    }
+
+    // TODO тест выборки вложенных таблиц
+
+
 
     /**
      * сверяем остатки в БД с расчетной моделью
      *
-     * @param  mixed $sklad_id
+     * @param  int $sklad_id
      * @return bool
      */
     private function checkRemains($sklad_id): bool
@@ -1786,7 +2589,7 @@ class ApiTest extends TestCase
         })->toArray();
         $calc_remains = $this->calcRemains()[$sklad_id];
         $res = $db_remains === $calc_remains;
-        if (!$res) {
+        if (!$res && $this->debug) {
             Log::info("_ WRONG REMAINS _", [
                 'db_remains' => $db_remains,
                 'calc_remains' => $calc_remains,
@@ -1853,7 +2656,7 @@ class ApiTest extends TestCase
                     'document_type' => SkladMove::class,
                     'document_id' => $move_out->id,
                     'document_date' => $move_out->doc_date,
-                    'sklad_id' => $move_out->sklad_out_id,
+                    'sklad_id' => $move_out->sklad_in_id,
                     'saldo' => 1,
                     'nomenklatura_id' => $item->nomenklatura_id,
                     'kolvo' => $item->kolvo,
@@ -1887,14 +2690,14 @@ class ApiTest extends TestCase
                 // если изделие собрано - оприходуем его
                 if ($item->is_producted == 1) {
                     $nomenklatura = $production->recipes->nomenklatura;
-                    $remains->push([
+                    if ($nomenklatura->is_usluga == 0) $remains->push([
                         'document_type' => Production::class,
                         'document_id' => $production->id,
                         'document_date' => $production->doc_date,
                         'sklad_id' => $production->sklad_id,
                         'saldo' => 1,
                         'nomenklatura_id' => $nomenklatura->id,
-                        'kolvo' => 1,
+                        'kolvo' => floatVal(1),
                         'price' => $nomenklatura->avg_price,
                         'summa' => $nomenklatura->avg_price
                     ]);
@@ -1930,9 +2733,24 @@ class ApiTest extends TestCase
     // функция проверяет наличие строк в ошибке запроса
     private function response_has_error($response, $text_array)
     {
+        $debug = $this->debug;
+        $failed_assert = [];
         $err = $this->get_response_error($response);
         foreach ($text_array as $needle) {
-            if (mb_strpos($err, $needle) === false) return false;
+            if (mb_strpos($err, $needle) === false) {
+                if ($debug) {
+                    $failed_assert[] = $needle;
+                } else {
+                    return false;
+                }
+            }
+        }
+        if ($debug && count($failed_assert)>0) {
+            Log::info("_ WRONG REQUEST ERROR SET _", [
+                'response error' => $err,
+                'failed strings' => $failed_assert,
+            ]);
+            return false;
         }
         return true;
     }

@@ -15,6 +15,12 @@ class SerialNumObserver
         // если метод поддерживается (используется трейт)
         if (method_exists($doc, 'sn_movable')) {
             $res = $doc->sn_movable()->updateOrCreate(['serial_num_id' => $sn->id], ['serial_num_id' => $sn->id]);
+            // $res = $doc->sn_movable()->create(['serial_num_id' => $sn->id]);
+            // $sklad_move_records = $doc->sn_movable()->get();
+            // if ($sklad_move_records->count()>0) {
+            // } else {
+            //     $res = $doc->sn_movable()->save(new SerialNumMove(['serial_num_id' => $sn->id]));
+            // }
             if (!$res) {
                 abort(421, 'Перемещения по серийному № ' . $sn->number . ' не получилось создать #' . $sn->id);
                 return false;

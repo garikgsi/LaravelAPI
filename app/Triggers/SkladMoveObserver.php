@@ -69,7 +69,7 @@ class SkladMoveObserver
         if ($sm->sklad_out_id == $sm->sklad_in_id) {
             throw new TriggerException('#SMO.Склад отправления равен складу назначения');
             // abort(421, '#SMO.Склад отправления равен складу назначения');
-            return false;
+            // return false;
         }
         // если распроводим или проводим - снимаем/ставим обе галочки
         if ($this->if_change('is_active')) {
@@ -79,7 +79,7 @@ class SkladMoveObserver
             } else {
                 // abort(421, '#SMO.Проводить и распроводить перемещение целиком может только администратор');
                 throw new TriggerException('#SMO.Проводить и распроводить перемещение целиком может только администратор');
-                return false;
+                // return false;
             }
         }
 
@@ -87,21 +87,21 @@ class SkladMoveObserver
         if ($this->if_change('is_out') && !$this->is_out_keeper && !$this->is_admin) {
             throw new TriggerException('#SMO.Отправлять(проводить) со склада отправления может только кладовщик склада отправления или администратор');
             // abort(421, '#SMO.Отправлять(проводить) со склада отправления может только кладовщик склада отправления или администратор');
-            return false;
+            // return false;
         }
 
         // получать может только кладовщик склада отправления
         if ($this->if_change('is_in') && !$this->is_in_keeper && !$this->is_admin) {
             throw new TriggerException('#SMO.Принимать(проводить) на склад получения может только кладовщик склада получения или администратор');
             // abort(421, '#SMO.Принимать(проводить) на склад получения может только кладовщик склада получения или администратор');
-            return false;
+            // return false;
         }
 
         // проверим, чтобы невозможно было оприходовать на склад получения без отметки об отправки со склада отправления
         if ($sm->is_in == 1 && $sm->is_out == 0) {
             throw new TriggerException('#SMO.Принимать(проводить) на склад получения можно только после отправки(проведения) со склада отправления');
             // abort(421, '#SMO.Принимать(проводить) на склад получения можно только после отправки(проведения) со склада отправления');
-            return false;
+            // return false;
         }
 
         // проверка остатков
@@ -137,7 +137,7 @@ class SkladMoveObserver
             $err = "#SMO.Недостаточно: " . implode(", ", $ostatok_err);
             throw new TriggerException($err);
             // abort(421, $err);
-            return false;
+            // return false;
         }
 
         // если проведено на складе отправления и на складе назначения - делаем общую пометку проведения
@@ -184,7 +184,7 @@ class SkladMoveObserver
         if (count($ostatok_err) > 0) {
             throw new TriggerException(implode(", ", $ostatok_err));
             // abort(421, implode(", ", $ostatok_err));
-            return false;
+            // return false;
         }
     }
 
@@ -223,20 +223,26 @@ class SkladMoveObserver
         $this->sklad_in_title = $sm->sklad_in;
         // пользователь
         $user = Auth::user();
-        $user_info = $user->info;
-        // сотрудник
-        $sotrudnik = $user_info->sotrudnik();
-        if ($sotrudnik) {
-            $this->sotrudnik = $user_info->sotrudnik();
-            // пользователь == кладовщик
-            $this->is_out_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_out_id'));
-            $this->is_in_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_in_id'));
-        } else {
+        try {
+            $user_info = $user->info;
+            // сотрудник
+            $sotrudnik = $user_info->sotrudnik();
+            if ($sotrudnik) {
+                $this->sotrudnik = $user_info->sotrudnik();
+                // пользователь == кладовщик
+                $this->is_out_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_out_id'));
+                $this->is_in_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_in_id'));
+            } else {
+                $this->is_out_keeper = false;
+                $this->is_in_keeper = false;
+            }
+            // пользователь = администратор
+            $this->is_admin = $user_info->is_admin();
+        } catch (\Throwable $th) {
             $this->is_out_keeper = false;
             $this->is_in_keeper = false;
+            $this->is_admin = false;
         }
-        // пользователь = администратор
-        $this->is_admin = $user_info->is_admin();
         // старые значения
         $this->old = $sm->getOriginal();
         // новые значения
@@ -251,7 +257,7 @@ class SkladMoveObserver
         } else {
             throw new TriggerException('#SMO.Чтобы использовать if_set нужно сначала инициализировать set_vars.sm');
             // abort(421, '#SMO.Чтобы использовать if_set нужно сначала инициализировать set_vars.sm');
-            return false;
+            // return false;
         }
         return false;
     }
@@ -263,7 +269,7 @@ class SkladMoveObserver
         } else {
             throw new TriggerException('#SMO.Чтобы использовать if_change нужно сначала инициализировать set_vars.sm');
             // abort(421, '#SMO.Чтобы использовать if_change нужно сначала инициализировать set_vars.sm');
-            return false;
+            // return false;
         }
         return false;
     }

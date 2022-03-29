@@ -59,7 +59,7 @@ class ProductionComponent extends ABPTable
     public function getNomenklaturaAttribute()
     {
         $component = $this->component()->first();
-        return $component ? $component->getSelectListTitleAttribute() : '';
+        return $component ? $component->getDocTitleAttribute() : '';
     }
     // выдаем единицу измерения номенклатуры
     public function getEdIsmAttribute()

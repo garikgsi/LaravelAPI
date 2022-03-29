@@ -213,8 +213,6 @@ class ABPTable extends Model
                 //         if (isset($table->appends)) $this->appends = $table->appends;
                 //         $this->t = $table;
                 //         return $table;
-            } else {
-                return null;
             }
         }
     }

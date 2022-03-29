@@ -40,7 +40,7 @@ class SkladMoveItemObserver
                 if (!$this->is_admin) {
                     throw new TriggerException('В проведенный документ вносить изменения может только администратор');
                     // abort(421, 'В проведенный документ вносить изменения может только администратор');
-                    return false;
+                    // return false;
                 }
             } else {
                 // если уже отправлено
@@ -52,7 +52,7 @@ class SkladMoveItemObserver
                     } else {
                         throw new TriggerException('Отправлять со склада может только кладовщик или администратор');
                         // abort(421, 'Отправлять со склада может только кладовщик или администратор');
-                        return false;
+                        // return false;
                     }
                 }
                 // если уже оприходовано
@@ -60,26 +60,8 @@ class SkladMoveItemObserver
                     if (!$this->is_in_keeper) {
                         throw new TriggerException('Приходовать на склад может только кладовщик или администратор');
                         // abort(421, 'Приходовать на склад может только кладовщик или администратор');
-                        return false;
+                        // return false;
                     }
-                }
-            }
-        }
-    }
-    // создание
-    public function created(SkladMoveItem $smi)
-    {
-        // инициализация служебных переменных
-        $this->set_vars($smi);
-
-        if ($this->sm) {
-            // обновляем регистр
-            for ($i = 0; $i <= 1; $i++) {
-                $res = $smi->mod_register($i, 'update_only');
-                if ($res["is_error"]) {
-                    throw new TriggerException($res["err"]);
-                    // abort(421, $res["err"]);
-                    return false;
                 }
             }
         }
@@ -104,11 +86,11 @@ class SkladMoveItemObserver
         }
     }
 
-    // обновление
-    public function updated(SkladMoveItem $smi)
+    public function saved(SkladMoveItem $smi)
     {
         // инициализация служебныех переменных
         $this->set_vars($smi);
+
         // если связи проинициализированы (мб такое, что модель еще не сопоставлена родителю)
         if ($this->sm) {
             // обновляем регистр
@@ -119,17 +101,6 @@ class SkladMoveItemObserver
                 if ($res["is_error"]) throw new TriggerException($res["err"]);
                 // if ($res["is_error"]) abort(421, $res["err"]);
             }
-        }
-    }
-
-
-    public function saved(SkladMoveItem $smi)
-    {
-        // инициализация служебныех переменных
-        $this->set_vars($smi);
-
-        // если связи проинициализированы (мб такое, что модель еще не сопоставлена родителю)
-        if ($this->sm) {
             // обновим серийные номера
             $sn_res = $smi->update_sn_register();
             if (!$sn_res) throw new TriggerException('Не удалось обновить базу данных серийных номеров');
@@ -193,20 +164,26 @@ class SkladMoveItemObserver
             $this->sklad_in_title = $sm->sklad_in;
             // пользователь
             $user = Auth::user();
-            $user_info = $user->info;
-            // сотрудник
-            $sotrudnik = $user_info->sotrudnik();
-            if ($sotrudnik) {
-                $this->sotrudnik = $user_info->sotrudnik();
-                // пользователь == кладовщик
-                $this->is_out_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_out_id'));
-                $this->is_in_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_in_id'));
-            } else {
+            try {
+                $user_info = $user->info;
+                // сотрудник
+                $sotrudnik = $user_info->sotrudnik();
+                if ($sotrudnik) {
+                    $this->sotrudnik = $user_info->sotrudnik();
+                    // пользователь == кладовщик
+                    $this->is_out_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_out_id'));
+                    $this->is_in_keeper = $this->sotrudnik->is_keeper($sm->getOriginal('sklad_in_id'));
+                } else {
+                    $this->is_out_keeper = false;
+                    $this->is_in_keeper = false;
+                }
+                // пользователь = администратор
+                $this->is_admin = $user_info->is_admin();
+            } catch (\Throwable $th) {
                 $this->is_out_keeper = false;
                 $this->is_in_keeper = false;
+                $this->is_admin = false;
             }
-            // пользователь = администратор
-            $this->is_admin = $user_info->is_admin();
             // старые значения
             $this->old = $sm->getOriginal();
             // новые значения

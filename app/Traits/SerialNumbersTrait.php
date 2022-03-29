@@ -7,6 +7,7 @@ use App\SerialNum;
 use App\SerialNumRegister;
 use App\SerialNumMove;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 
 trait SerialNumbersTrait
@@ -112,8 +113,13 @@ trait SerialNumbersTrait
         return [];
     }
 
-    // setter синхронизация серийных номеров строки накладной с массивом переданных данных
-    public function syncSerials($data)
+    /**
+     * синхронизация серийных номеров строки накладной с массивом переданных данных
+     *
+     * @param  int|array $data
+     * @return array
+     */
+    public function syncSerials(string|array $data):array
     {
         // ошибки
         $errors = [];
@@ -180,10 +186,11 @@ trait SerialNumbersTrait
             } else {
                 // списание существующих серийных номеров
                 // массив существующих серийников для записи
-                $existed_id = $this->sn_movable()->pluck('serial_num_id')->all();
+                $existed_id = $this->sn_movable()->get()->pluck('serial_num_id')->all();
                 // удаляем серийники не вошедшие в список
                 $to_delete_id = array_diff($existed_id, $data);
                 foreach ($to_delete_id as $del_id) {
+// dd($existed_id, $data, $to_delete_id, $del_id);
                     $this->sn_movable()->where('serial_num_id', $del_id)->first()->delete();
                 }
                 // добавляем в список новые серийники
@@ -195,6 +202,13 @@ trait SerialNumbersTrait
                         unset($sn_move_model);
                     }
                 }
+Log::info("- TRAIT SN -", [
+    'this' => $this->toArray(),
+    'data' =>$data,
+    'existed_id' => $existed_id,
+    'to_delete_id' => $to_delete_id,
+    'save_id'=>$save_id
+]);
             }
         }
         return [
@@ -227,6 +241,7 @@ trait SerialNumbersTrait
         $res = true;
         $sn_all = $this->sn_movable;
         foreach ($sn_all as $sn) {
+            // dd($sn->toArray());
             $res = $sn->touch();
         }
         return $res;
@@ -278,7 +293,7 @@ trait SerialNumbersTrait
     private function mod_snm_registers(SerialNumMove $snm, $mode = null)
     {
         // строка документа к которому привязан серийник
-        $doc = $snm->sn_movable;
+        $doc = $snm->sn_movable();
         // dd($doc->toArray());
         // типы документов, которые могут порадить создание серийных номеров
         $ReceiveClass = 'App\SkladReceiveItem';
@@ -380,6 +395,7 @@ trait SerialNumbersTrait
             "ou_date" => date('Y-m-d'),
             "serial_id" => $snm->serial_num_id,
         ];
+
         // если документ найден
         if (isset($doc_data)) {
             // моды при которых проверки не проводятся

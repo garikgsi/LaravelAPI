@@ -200,6 +200,8 @@ class Production extends ABPTable
         // dd($this->recipes());
         try {
             return $this->recipes() ? $this->recipes->nomenklatura : null;
+
+            // $this->recipes()->first()->nomenklatura()->first()
         } catch (\Throwable $th) {
             dd($th);
         }

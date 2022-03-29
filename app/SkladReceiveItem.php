@@ -90,7 +90,7 @@ class SkladReceiveItem extends ABPTable
     public function getNomenklaturaAttribute()
     {
         $n = $this->nomenklatura_()->first();
-        return $n ? $n->getSelectListTitleAttribute() : '';
+        return $n ? $n->getDocTitleAttribute() : '';
     }
     // единица измерения номенклатуры
     public function getEdIsmAttribute()

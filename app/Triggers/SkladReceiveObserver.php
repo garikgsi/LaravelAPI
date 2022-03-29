@@ -57,7 +57,7 @@ class SkladReceiveObserver
         if ($this->if_change('is_active') && !$this->is_keeper && !$this->is_admin) {
             // abort(421, '#SRO. Приходовать накладные может только кладовщик или администратор');
             throw new TriggerException('#SRO. Приходовать накладные может только кладовщик или администратор');
-            return false;
+            // return false;
         }
 
         // проверка остатков
@@ -67,7 +67,7 @@ class SkladReceiveObserver
             if ($check !== true) {
                 // abort(421, $check);
                 throw new TriggerException($check);
-                return false;
+                // return false;
             }
         }
     }
@@ -83,7 +83,7 @@ class SkladReceiveObserver
                 if (!$res) {
                     throw new TriggerException('#SRO. Запись накладной ' . $item->id . ' не удалось сохранить');
                     // abort(421, '#SRO. Запись накладной ' . $item->id . ' не удалось сохранить');
-                    return false;
+                    // return false;
                 }
             }
         }
@@ -101,7 +101,7 @@ class SkladReceiveObserver
         if ($check !== true) {
             throw new TriggerException($check);
             // abort(421, $check);
-            return false;
+            // return false;
         }
     }
 
@@ -184,7 +184,7 @@ class SkladReceiveObserver
         } else {
             throw new TriggerException('#SRO. Чтобы использовать if_set нужно сначала инициализировать переменные');
             // abort(421, '#SRO. Чтобы использовать if_set нужно сначала инициализировать переменные');
-            return false;
+            // return false;
         }
         return false;
     }
@@ -196,7 +196,7 @@ class SkladReceiveObserver
         } else {
             throw new TriggerException('#SRO. Чтобы использовать if_change нужно сначала инициализировать переменные');
             // abort(421, '#SRO. Чтобы использовать if_change нужно сначала инициализировать переменные');
-            return false;
+            // return false;
         }
         return false;
     }

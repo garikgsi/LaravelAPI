@@ -179,7 +179,7 @@ class SerialNumMoveObserver
                 ];
                 $is_active = 1;
             }
-            // если отгружен
+            // если получен
             if ($sm->is_in == 1) {
                 $doc_data[] = [
                     "doc_date" => $sm->doc_date,
@@ -208,6 +208,7 @@ class SerialNumMoveObserver
                     if ($ddata["in_out"] == 0) {
                         // если серийник уже списан - не будем проверять остатки
                         // dd($this->is_sn_out($snm));
+                        // dd($snm->toArray());
                         if (!$this->is_sn_out($snm)) {
                             // получим кол-во
                             $existed_kolvo = $this->sn_kolvo_exists($snm->serial_num_id, $ddata['sklad_id']);

@@ -1241,7 +1241,9 @@ class APIController extends Controller
                         if (method_exists($model, 'syncSerials')) {
                             if ($request->has('data')) {
                                 try {
-                                    $res_sync = $model->syncSerials(json_decode($request->data, true));
+                                    $serials_data = is_array($request->data)?$request->data:json_decode($request->data, true);
+
+                                    $res_sync = $model->syncSerials($serials_data);
                                     if ($res_sync["is_error"]) {
                                         return $this->response->set_err($res_sync["errors"], 400)->response();
                                     } else {

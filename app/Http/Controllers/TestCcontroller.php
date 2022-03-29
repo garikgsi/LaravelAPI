@@ -7,6 +7,9 @@ use App\Sklad;
 use App\SkladRegister;
 use App\Production;
 use App\Nomenklatura;
+use App\ProductionItem;
+use App\RecipeItem;
+use App\SkladMove;
 
 
 
@@ -18,7 +21,9 @@ class TestCcontroller extends Controller
 
     public function test() {
 
-
+        $move = SkladMove::find(1257);
+        $total_items = $move->items()->dd();
+        dd($total_items);
 
     // $remains = collect([]);
 

@@ -5,6 +5,7 @@ namespace App\Traits;
 
 use App\SkladRegister;
 use App\Kontragent;
+use App\Nomenklatura;
 
 trait SkladRegisterTrait
 {
@@ -26,22 +27,33 @@ trait SkladRegisterTrait
         return $this->register()->where('saldo', $saldo)->count() > 0 ? true : false;
     }
 
-    // getter проверка что кол-ва хватает на складе
-    // чтобы списать $kolvo с учетом уже списанного кол-ва в регистрах
+    /**
+     * проверка что кол-ва хватает на складе, чтобы списать $kolvo с учетом уже списанного кол-ва в регистрах
+     *
+     * @param  int $sklad_id
+     * @param  int $nomenklatura_id
+     * @param  float $kolvo
+     * @return float
+     */
     public function check_ostatok($sklad_id, $nomenklatura_id, $kolvo)
     {
-        // нужно учитывать остатки регистра по текущей строке
-        $this_kolvo = floatVal($this->register()->sklad_id($sklad_id)->nomenklatura_id($nomenklatura_id)->get()->sum('kolvo'));
-        // правильное кол-во = требуемое кол-во за вычетом того, что есть
-        $real_kolvo = $kolvo - $this_kolvo;
-        // если требуемое кол-во больше 0
-        if ($real_kolvo > 0) {
-            $ostatok = $this->get_ostatok($sklad_id, $nomenklatura_id);
-            $delta = $ostatok - $real_kolvo;
+        $n = Nomenklatura::find($nomenklatura_id);
+        if ($n && $n->is_usluga==0) {
+            // нужно учитывать остатки регистра по текущей строке
+            $this_kolvo = floatVal($this->register()->sklad_id($sklad_id)->nomenklatura_id($nomenklatura_id)->get()->sum('kolvo'));
+            // правильное кол-во = требуемое кол-во за вычетом того, что есть
+            $real_kolvo = $kolvo - $this_kolvo;
+            // если требуемое кол-во больше 0
+            if ($real_kolvo > 0) {
+                $ostatok = $this->get_ostatok($sklad_id, $nomenklatura_id);
+                $delta = $ostatok - $real_kolvo;
+            } else {
+                $delta = $real_kolvo;
+            }
+            return $delta;
         } else {
-            $delta = $real_kolvo;
+            return $kolvo;
         }
-        return $delta;
     }
 
     // getter проверка что при удалении регистров остатки будут положительные

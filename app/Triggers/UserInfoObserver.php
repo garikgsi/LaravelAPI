@@ -29,7 +29,7 @@ class UserInfoObserver
                 }
                 throw new TriggerException($msg);
                 // abort(421, $msg);
-                return false;
+                // return false;
             }
         }
     }

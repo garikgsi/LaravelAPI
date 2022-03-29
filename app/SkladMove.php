@@ -74,32 +74,51 @@ class SkladMove extends ABPTable
     // для select-ов
     public function getSelectListTitleAttribute()
     {
-        $doc_date = Carbon::createFromFormat('Y-m-d', $this->doc_date);
-        return 'Перемещение №' . $this->doc_num . ' от ' . $doc_date->format('d.m.Y');
+        try {
+            $doc_date = Carbon::createFromFormat('Y-m-d', $this->doc_date);
+            return 'Перемещение №' . $this->doc_num . ' от ' . $doc_date->format('d.m.Y');
+        } catch (\Throwable $th) {
+            return '';
+        }
     }
     // значение полиморфной таблицы
     public function getTransitableTitleAttribute()
     {
-        if (isset($this->attributes["transitable_type"]) && $this->attributes["transitable_type"] && isset($this->attributes["transitable_id"]) && $this->attributes["transitable_id"] > 1) {
-            $model_table = $this->attributes["transitable_type"];
-            $morphModel = new $model_table();
-            return ABPCache::get_select_list($morphModel->table(), $this->attributes["transitable_id"]);
+        try {
+            if (isset($this->attributes["transitable_type"]) && $this->attributes["transitable_type"] && isset($this->attributes["transitable_id"]) && $this->attributes["transitable_id"] > 1) {
+                $model_table = $this->attributes["transitable_type"];
+                $morphModel = new $model_table();
+                return ABPCache::get_select_list($morphModel->table(), $this->attributes["transitable_id"]);
+            }
+        } catch (\Throwable $th) {
+            return null;
         }
-        return null;
     }
     // склад отправления
     public function getSkladOutAttribute()
     {
-        return $this->sklad_out_()->first()->getSelectListTitleAttribute();
+        try {
+            return $this->sklad_out_()->first()->getSelectListTitleAttribute();
+        } catch (\Throwable $th) {
+            return '';
+        }
     }
     // склад получения
     public function getSkladInAttribute()
     {
-        return $this->sklad_in_()->first()->getSelectListTitleAttribute();
+        try {
+            return $this->sklad_in_()->first()->getSelectListTitleAttribute();
+        } catch (\Throwable $th) {
+            return '';
+        }
     }
     // организация
     public function getFirmAttribute()
     {
-        return $this->firm_()->first()->getSelectListTitleAttribute();
+        try {
+            return $this->firm_()->first()->getSelectListTitleAttribute();
+        } catch (\Throwable $th) {
+            return '';
+        }
     }
 }
