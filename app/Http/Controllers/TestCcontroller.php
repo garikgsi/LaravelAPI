@@ -11,6 +11,12 @@ use App\ProductionItem;
 use App\RecipeItem;
 use App\SkladMove;
 
+use App\Jobs\Sync1c;
+use App\Notifications\Sync1CNotification;
+use App\User;
+use Illuminate\Support\Facades\Notification;
+use App\SkladReceive;
+use Illuminate\Support\Facades\Auth;
 
 
 class TestCcontroller extends Controller
@@ -20,10 +26,6 @@ class TestCcontroller extends Controller
 
 
     public function test() {
-
-        $move = SkladMove::find(1257);
-        $total_items = $move->items()->dd();
-        dd($total_items);
 
     // $remains = collect([]);
 

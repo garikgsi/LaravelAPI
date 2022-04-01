@@ -1302,11 +1302,14 @@ class ApiTest extends TestCase
                 $deficit = [];
                 $receive_items = $receive->items()->get();
                 foreach($receive_items as $item) {
-                    $nomenklatura_remains = isset($all_remains[$receive->sklad_id][$item->nomenklatura_id]) ? $all_remains[$receive->sklad_id][$item->nomenklatura_id] : 0;
-                    if ($nomenklatura_remains < $item->kolvo) {
-                        $receive_id = $receive->id;
-                        $deficit[$item->nomenklatura_id] = abs($nomenklatura_remains - $item->kolvo);
-                        // break;
+                    $n = Nomenklatura::find($item->nomenklatura_id);
+                    if ($n->is_usluga == 0) {
+                        $nomenklatura_remains = isset($all_remains[$receive->sklad_id][$item->nomenklatura_id]) ? $all_remains[$receive->sklad_id][$item->nomenklatura_id] : 0;
+                        if ($nomenklatura_remains < $item->kolvo) {
+                            $receive_id = $receive->id;
+                            $deficit[$item->nomenklatura_id] = abs($nomenklatura_remains - $item->kolvo);
+                            // break;
+                        }
                     }
                 }
             }
@@ -1886,20 +1889,26 @@ class ApiTest extends TestCase
                                 // необходимое кол-во для замены по строке рецептуры
                                 $recipe_item_kolvo_by_production = $recipe_item->kolvo * $kolvo_to * $production->kolvo;
                                 // делаем замену
-                                $recipe_replace = new RecipeItemReplace();
-                                $recipe_replace->updateOrCreate(
-                                    [
-                                        'recipe_item_id' => $recipe_item->id,
-                                        'nomenklatura_to_id' => $r_nomenklatura_id
-                                    ],
-                                    [
+                                $recipe_replace = RecipeItemReplace::where([
+                                    'recipe_item_id' => $recipe_item->id,
+                                    'nomenklatura_to_id' => $r_nomenklatura_id,
+                                ])->first();
+                                if ($recipe_replace) {
+                                    $recipe_replace->fill([
+                                        'comment' => self::$comment,
+                                        'kolvo_from' => 1,
+                                        'kolvo_to' => $kolvo_to
+                                    ])->save();
+                                } else {
+                                    $recipe_replace = new RecipeItemReplace;
+                                    $recipe_replace->fill([
                                         'recipe_item_id' => $recipe_item->id,
                                         'nomenklatura_to_id' => $r_nomenklatura_id,
                                         'comment' => self::$comment,
                                         'kolvo_from' => 1,
                                         'kolvo_to' => $kolvo_to
-                                    ]
-                                )->save();
+                                    ])->save();
+                                }
                                 $replaced_nomenklatura[] = $r_nomenklatura_id;
                                 // кол-во заменяемого
                                 $replace_kolvo = $r_ostatok > $recipe_item_kolvo_by_production ? $recipe_item_kolvo_by_production : $r_ostatok;
@@ -2012,7 +2021,7 @@ class ApiTest extends TestCase
                 $this->assertTrue($recipe_items->count()<=$components->count()); //"Кол-во компонентов изделия меньше количества набора рецептуры"
                 $self_price = $components->sum('summa');
                 $this->assertTrue($self_price>0);//"Себестоимость изделия ==0"
-                $this->assertSame(round($item->summa,2), round($self_price,2),"Себестоимость изделия [".round($item->summa,2)."] не совпадает с суммой компонентов [".round($self_price,2)."]");
+                $this->assertSame(round($item->summa,1), round($self_price,1),"Себестоимость изделия [".round($item->summa,2)."] не совпадает с суммой компонентов [".round($self_price,2)."]");
             }
         }
         return $production_id;
@@ -2587,7 +2596,12 @@ class ApiTest extends TestCase
         $db_remains = Sklad::find($sklad_id)->get_remains()->sortKeys()->filter(function ($remains) {
             return $remains > 0;
         })->toArray();
-        $calc_remains = $this->calcRemains()[$sklad_id];
+        $all_remains = $this->calcRemains();
+        if (isset($all_remains[$sklad_id])) {
+            $calc_remains = $all_remains[$sklad_id];
+        } else {
+            $calc_remains = [];
+        }
         $res = $db_remains === $calc_remains;
         if (!$res && $this->debug) {
             Log::info("_ WRONG REMAINS _", [

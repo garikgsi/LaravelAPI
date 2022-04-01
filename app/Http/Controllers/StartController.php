@@ -13,6 +13,7 @@ use App\Jobs\Sync1c;
 use App\Notifications\Sync1C as Sync1CNotification;
 use App\User;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Auth;
 
 class StartController extends Controller
 {
@@ -25,7 +26,10 @@ class StartController extends Controller
     // синхронизация с 1С
     public function sync1C()
     {
-        dispatch(new Sync1c());
+        Sync1c::dispatch(Auth::user());
+        // dispatch(new Sync1c($user));
+        // $sync = new Sync1c();
+        // $sync->handle();
         return back();
     }
 }

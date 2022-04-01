@@ -33,13 +33,17 @@ class ActObserver
 
         // пользователь
         $user = Auth::user();
-        $user_info = $user->info;
-        // сотрудник
-        $sotrudnik = $user_info->sotrudnik();
-        // пользователь = администратор
-        $is_admin = $user_info->is_admin();
-        // пользователь = складарь
-        $is_keeper = $sotrudnik ? $sotrudnik->is_keeper($a->sklad_id) : false;
+        $is_admin = false;
+        $is_keeper = false;
+        if ($user) {
+            $user_info = $user->info;
+            // сотрудник
+            $sotrudnik = $user_info->sotrudnik();
+            // пользователь = администратор
+            $is_admin = $user_info->is_admin();
+            // пользователь = складарь
+            $is_keeper = $sotrudnik ? $sotrudnik->is_keeper($a->sklad_id) : false;
+        }
 
 
 

@@ -700,13 +700,19 @@ class ProductionObserver
         $this->sklad_title = $p->sklad;
         // пользователь
         $user = Auth::user();
-        $user_info = $user->info;
-        // сотрудник
-        $this->sotrudnik = $user_info->sotrudnik();
-        // пользователь == кладовщик
-        $this->is_keeper = $this->sotrudnik ? $this->sotrudnik->is_keeper($p->sklad_id) : false;
-        // пользователь = администратор
-        $this->is_admin = $user_info->is_admin();
+        $this->is_keeper = false;
+        $this->is_admin = false;
+        if ($user) {
+            $user_info = $user->info;
+            if ($user_info) {
+                // сотрудник
+                $this->sotrudnik = $user_info->sotrudnik();
+                // пользователь == кладовщик
+                $this->is_keeper = $this->sotrudnik ? $this->sotrudnik->is_keeper($p->sklad_id) : false;
+                // пользователь = администратор
+                $this->is_admin = $user_info->is_admin();
+            }
+        }
         // старые значения
         $this->old = $p->getOriginal();
         // новые значения

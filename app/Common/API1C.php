@@ -96,7 +96,7 @@ class API1C
                 // ])
                 ->retry($this->RetryTimes, $this->RetryTimeout)
                 ->$method($URL, $data);
-        } catch (RequestException $exception) {
+        } catch (RequestException $exception) { 
             $response = $exception->response;
             $retData = json_decode((string) $response);
             if ($response->serverError() || $response->clientError()) {

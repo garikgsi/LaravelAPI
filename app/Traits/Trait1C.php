@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Cache;
 use App\Nomenklatura;
 use App\EdIsm;
 use App\Valuta;
+use Illuminate\Support\Facades\Log;
 
 
 trait Trait1C
@@ -547,7 +548,7 @@ trait Trait1C
                     "Количество" => floatVal($item->kolvo),
                     "Цена" => floatVal($item->price),
                     "Сумма" => floatVal($item->summa),
-                    "СтавкаНДС" => $item->stavka_nds,
+                    "СтавкаНДС" => $item->stavka_nds_title,
                     "СуммаНДС" => floatVal($item->summa_nds),
                     "СчетДоходов_Key" => $this->ac_uuid("90.01.1", "86eff7ae-d84c-11ea-8133-0050569f62a1"),
                     "СчетРасходов_Key" => $this->ac_uuid("90.02.1", "86eff7b1-d84c-11ea-8133-0050569f62a1"),
@@ -589,7 +590,7 @@ trait Trait1C
                     "Количество" => floatVal($item->kolvo),
                     "Цена" => floatVal($item->price),
                     "Сумма" => floatVal($item->summa),
-                    "СтавкаНДС" => $item->stavka_nds,
+                    "СтавкаНДС" => $item->stavka_nds_title,
                     "СуммаНДС" => floatVal($item->summa_nds),
                     "СчетУчета_Key" => $this->ac_uuid("10.01", "86eff64f-d84c-11ea-8133-0050569f62a1")
                 ];
@@ -744,6 +745,9 @@ trait Trait1C
                     $errors[] = $response_from_1c["err_text"];
                 } else {
                     $errors[] = 'Обработка запроса 1С завершилась неизвестной ошибкой';
+                    Log::info(' 1C SYNC ERROR ',[
+                        'response_1c' => $response_from_1c
+                    ]);
                 }
                 $logs[] = "Документ не синхронизирован. Ошибка!";
             }

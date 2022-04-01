@@ -187,11 +187,17 @@ class ProductionItemObserver
     {
         // пользователь
         $user = Auth::user();
-        $user_info = $user->info;
-        // сотрудник
-        $this->sotrudnik = $user_info->sotrudnik();
-        // пользователь = администратор
-        $this->is_admin = $user_info->is_admin();
+        $this->is_admin = false;
+        $this->is_keeper = false;
+        if ($user) {
+            $user_info = $user->info;
+            if ($user_info) {
+                // сотрудник
+                $this->sotrudnik = $user_info->sotrudnik();
+                // пользователь = администратор
+                $this->is_admin = $user_info->is_admin();
+            }
+        }
         // старые значения
         $this->old = $pi->getOriginal();
         // новые значения

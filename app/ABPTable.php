@@ -222,6 +222,16 @@ class ABPTable extends Model
     //     parent::boot();
     // }
 
+
+    public function new_table($table) {
+        if (isset($this->tables[$table])) {
+            $className = $this->tables[$table]['Class'];
+            return new $className;
+        } else {
+            abort(500,"Таблица $table не описана в системе");
+        }
+    }
+
     // общие для всех читатели
     // разрешения
     public function getPermissionsAttribute()
@@ -2164,7 +2174,7 @@ class ABPTable extends Model
                     }
                     break;
                 case 'document': {
-                        $model[] = ["name" => "doc_num", "name_1c" => "Number", "type" => "string", "title" => "№ документа", "require" => ["edit"], "default" => "", "index" => "index", "show_in_table" => true, "out_index" => 1, "show_in_form" => ["edit"]];
+                        $model[] = ["name" => "doc_num", "name_1c" => "Комментарий", "type" => "string", "title" => "№ документа", "require" => ["edit"], "default" => "", "index" => "index", "show_in_table" => true, "out_index" => 1, "show_in_form" => ["edit"]];
                         $model[] = ["name" => "doc_date", "name_1c" => "Date", "type" => "date", "title" => "Дата документа", "require" => true, "default" => date("Y-m-d"), "index" => "index", "show_in_table" => true, "out_index" => 2];
                         $model[] = ["name" => "is_active", "name_1c" => "Posted", "type" => "boolean", "title" => "Проведен", "require" => true, 'default' => 0, "index" => "index", "show_in_form" => false, "post" => true];
                         $model[] = ["name" => "comment", "type" => "string", "max" => 255, "title" => "Комментарий", "require" => false, "default" => '', "out_index" => 1000, "show_in_table" => false];
