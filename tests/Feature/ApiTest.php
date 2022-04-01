@@ -131,7 +131,7 @@ class ApiTest extends TestCase
     public static function tearDownAfterClass(): void
     {
         // parent::tearDownAfterClass();
-        self::cleanDb();
+        // self::cleanDb();
     }
 
     /**

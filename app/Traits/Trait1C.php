@@ -640,19 +640,22 @@ trait Trait1C
             $line_num = 1;
             // пройдемся по компонентам
             foreach ($components as $component) {
-                // номенклатура материала
-                $material = Nomenklatura::find($component["nomenklatura_id"]);
-                $ed_ism = $material->ed_ism_()->first();
-                $data["Материалы"][] = [
-                    "LineNumber" => $line_num,
-                    "Номенклатура_Key" => $material->get_uuid(["ВидНоменклатуры_Key" => $this->nomenklatura_type_uuid('Материалы', 'f40235d8-d84c-11ea-8133-0050569f62a1')]),
-                    "Счет_Key" => $this->ac_uuid("10.01", "86eff64f-d84c-11ea-8133-0050569f62a1"),
-                    "ЕдиницаИзмерения_Key" => $ed_ism->get_uuid(),
-                    "Коэффициент" => 1,
-                    "Количество" => floatVal($component["kolvo"]),
-                ];
-                // инкремент строки
-                $line_num++;
+                $kolvo = floatVal($component["kolvo"]);
+                if ($kolvo>0) {
+                    // номенклатура материала
+                    $material = Nomenklatura::find($component["nomenklatura_id"]);
+                    $ed_ism = $material->ed_ism_()->first();
+                    $data["Материалы"][] = [
+                        "LineNumber" => $line_num,
+                        "Номенклатура_Key" => $material->get_uuid(["ВидНоменклатуры_Key" => $this->nomenklatura_type_uuid('Материалы', 'f40235d8-d84c-11ea-8133-0050569f62a1')]),
+                        "Счет_Key" => $this->ac_uuid("10.01", "86eff64f-d84c-11ea-8133-0050569f62a1"),
+                        "ЕдиницаИзмерения_Key" => $ed_ism->get_uuid(),
+                        "Коэффициент" => 1,
+                        "Количество" => $kolvo,
+                    ];
+                    // инкремент строки
+                    $line_num++;
+                }
             }
         }
         // если есть данные, которые переданы для внесения при добавлении
